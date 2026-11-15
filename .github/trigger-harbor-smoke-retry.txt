@@ -1,1 +1,0 @@
-Trigger the corrected Harbor CLI smoke job.

@@ -1,0 +1,1 @@
+Trigger the Docker-backed Harbor smoke test workflow after adding the smoke-test job.

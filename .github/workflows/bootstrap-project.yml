@@ -1,0 +1,58 @@
+name: Publish full project source and run local tests
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out new repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Expand project into the repository root
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f project_bundle.zip
+          mkdir -p /tmp/harbor-project
+          unzip -q project_bundle.zip -d /tmp/harbor-project
+          cp -a /tmp/harbor-project/. .
+          rm -f project_bundle.zip .github/workflows/bootstrap-project.yml
+          test -f tasks/reconcile-bug/task.toml
+          test -f scripts/run_local_validation.sh
+
+      - name: Run actual local verifier tests
+        shell: bash
+        run: bash scripts/run_local_validation.sh | tee /tmp/harbor-local-validation.log
+
+      - name: Commit extracted source tree to the new repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish complete Harbor RL project source"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload local test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harbor-local-verification-log
+          path: /tmp/harbor-local-validation.log
+          if-no-files-found: warn
+          retention-days: 30

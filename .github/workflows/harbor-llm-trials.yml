@@ -1,5 +1,9 @@
 name: Harbor LLM trials (FREE Groq model only)
 
+concurrency:
+  group: harbor-groq-free-trials
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
 
@@ -57,7 +61,10 @@ jobs:
         run: bash scripts/use_binary_verifier.sh
 
       - name: Run baseline group (three sequential trials)
-        run: harbor run --config .github/configs/harbor-groq-baseline.yml --yes
+        run: |
+          set -euo pipefail
+          cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
+          harbor run --config .github/configs/harbor-groq-baseline.yml --yes
 
       - name: Run one-change ablation group (three sequential trials)
         run: |

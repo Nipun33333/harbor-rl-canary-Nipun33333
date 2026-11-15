@@ -3,7 +3,7 @@ schema_version = "1.4"
 [task]
 name = "harbor-rl-canary/reconcile-bug"
 version = "1.0.0"
-authors = ["Nipun Agarwal"]
+authors = [{ name = "Nipun Agarwal" }]
 keywords = ["reinforcement-learning", "coding", "data-reconciliation", "evaluation"]
 
 [metadata]

@@ -8,7 +8,7 @@ tasks:
   - path: tasks/reconcile-bug
 agents:
   - name: terminus-2
-    model_name: groq/openai/gpt-oss-20b
+    model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
     env:
       GROQ_API_KEY: ${GROQ_API_KEY}

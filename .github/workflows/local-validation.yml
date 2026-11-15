@@ -39,9 +39,9 @@ jobs:
           uv tool install harbor
           harbor --help
       - name: Run Harbor no-op smoke trial
-        run: harbor run -p ./tasks/reconcile-bug -a nop
+        run: harbor run --path ./tasks/reconcile-bug --agent nop --n-concurrent 1
       - name: Run Harbor oracle solution smoke trial
-        run: harbor run -p ./tasks/reconcile-bug -a oracle
+        run: harbor run --path ./tasks/reconcile-bug --agent oracle --n-concurrent 1
       - name: Upload Harbor smoke result files
         if: always()
         uses: actions/upload-artifact@v4

@@ -20,7 +20,7 @@ The binary calibration verifier is all-or-nothing: a trial receives `1.00` only 
 
 ## 3. Ablation & RL Advantage Table (`terminus-2`, `k=3`)
 
-**Fill this table only from the six real Harbor jobs.** The baseline and ablation trials have not been run in this build environment because Docker/Harbor and a model API key are not available here.
+**Fill this table only from the six real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed in GitHub Actions: `nop` scored `0.00` and `oracle` scored `1.00`. The six baseline and ablation LLM trials remain pending until a Groq Free-plan API key is added as the `GROQ_API_KEY` repository Actions secret; no model inference call has been made yet.
 
 | Run | Change tested | Trial 1 (Binary / Dense) | Trial 2 (Binary / Dense) | Trial 3 (Binary / Dense) | Mean Binary | Mean Dense | Binary advantages (T1, T2, T3) | Dense advantages (T1, T2, T3) |
 | :-- | :-- | :-- | :-- | :-- | --: | --: | :-- | :-- |
@@ -80,11 +80,11 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 8. GitHub Actions
 
-> Provider note: GitHub Models was retired on July 30, 2026. This project therefore uses Groq Free rather than GitHub Models. The workflow is pinned to `groq/openai/gpt-oss-20b`; no paid model, billing upgrade, or fallback is configured.
+> Provider note: this submission uses **Groq** (spelled with a `q`), not **Grok** from xAI. xAI's Grok API is usage-priced, so it does not meet the no-paid-API requirement. The selected alternative is `openai/gpt-oss-20b` through Groq's Free tier. The workflow is pinned to `groq/openai/gpt-oss-20b`; no paid model or fallback is configured. Keep the Groq account on its Free plan and do not enable a paid upgrade.
 
 
-- `Local reward verifier` runs the four local calibration / anti-cheat states on pushes and pull requests.
-- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It checks that `openai/gpt-oss-20b` is available to the key, then runs three baseline and three ablation `terminus-2` trials sequentially. No paid model, Developer tier, or billing upgrade is selected. The workflow uploads the generated `jobs/` directory as an artifact containing the actual `result.json` and `trajectory.json` files.
+- `Local reward verifier` runs the four local calibration / anti-cheat states on pushes and pull requests. The separate Harbor Docker smoke jobs run `nop` and `oracle`; the latest GitHub Actions run passed both, with reward means `0.00` and `1.00` respectively.
+- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It checks that `openai/gpt-oss-20b` is listed for the key, then runs three baseline and three ablation `terminus-2` trials sequentially. The model-list check does not make an inference request. Actual trial calls use the Groq account's available plan limits; do not upgrade to the paid Developer tier. The workflow uploads the generated `jobs/` directory as an artifact containing the actual `result.json` and `trajectory.json` files.
 
 ## 9. Local Validation
 

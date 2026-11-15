@@ -64,20 +64,20 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
-          harbor run -p ./tasks/reconcile-bug \
-            -a terminus-2 \
+          harbor run --path ./tasks/reconcile-bug \
+            --agent terminus-2 \
             --model groq/openai/gpt-oss-20b \
-            -k 3 -n 1
+            --n-attempts 3 --n-concurrent 1
 
       - name: Run one-change ablation group (three sequential trials)
         shell: bash
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
-          harbor run -p ./tasks/reconcile-bug \
-            -a terminus-2 \
+          harbor run --path ./tasks/reconcile-bug \
+            --agent terminus-2 \
             --model groq/openai/gpt-oss-20b \
-            -k 3 -n 1
+            --n-attempts 3 --n-concurrent 1
 
       - name: Upload real Harbor result.json and trajectory.json files
         if: always()

@@ -1,0 +1,10 @@
+job_name: harbor-nop-smoke
+jobs_dir: jobs
+n_attempts: 1
+n_concurrent_trials: 1
+environment:
+  type: docker
+tasks:
+  - path: tasks/reconcile-bug
+agents:
+  - name: nop

@@ -38,8 +38,8 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           uv tool install harbor
           harbor --help
-      - name: Show installed Harbor run options
-        run: harbor run --help
+      - name: Show installed Harbor exec options
+        run: harbor exec --help
       - name: Run Harbor no-op smoke trial
         run: harbor run --path ./tasks --agent nop --n-concurrent 1
       - name: Run Harbor oracle solution smoke trial

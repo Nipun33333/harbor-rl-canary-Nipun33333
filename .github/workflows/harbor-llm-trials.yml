@@ -20,7 +20,7 @@ jobs:
       - name: Check out submission
         uses: actions/checkout@v4
 
-      - name: Confirm free Groq model availability (no inference call)
+      - name: Confirm free Groq Qwen model availability (no inference call)
         shell: bash
         run: |
           set -euo pipefail
@@ -39,7 +39,7 @@ jobs:
 
           data = json.loads(Path("/tmp/groq-models.json").read_text())
           model_ids = {item.get("id") for item in data.get("data", [])}
-          expected = "openai/gpt-oss-20b"
+          expected = "qwen/qwen3.8-27b"
           if expected not in model_ids:
               raise SystemExit(
                   f"Required model {expected!r} is not accessible to this key."
@@ -65,12 +65,58 @@ jobs:
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
           harbor run --config .github/configs/harbor-groq-baseline.yml --yes
+          python - <<'PYRESULT'
+          import json
+          from pathlib import Path
+
+          path = Path("jobs/groq-baseline/harbor-groq-free-baseline/result.json")
+          data = json.loads(path.read_text())
+          stats = data.get("stats", {})
+          expected = 3
+          if (
+              stats.get("n_total_trials") != expected
+              or stats.get("n_completed_trials") != expected
+              or stats.get("n_errored_trials", 0) != 0
+          ):
+              raise SystemExit(
+                  "Baseline group did not produce three error-free trials: "
+                  + json.dumps(stats, sort_keys=True)
+              )
+          for name, group in stats.get("evals", {}).items():
+              if group.get("n_trials") != expected or group.get("n_errors", 0) != 0:
+                  raise SystemExit(f"Baseline evaluation has errors: {name}: {group}")
+          print("Baseline validation passed: 3/3 trials completed without exceptions.")
+          PYRESULT
 
       - name: Run one-change ablation group (three sequential trials)
         run: |
           set -euo pipefail
+          # Let the Free-plan per-minute token window recover before the next group.
+          sleep 60
           cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
           harbor run --config .github/configs/harbor-groq-ablation.yml --yes
+          python - <<'PYRESULT'
+          import json
+          from pathlib import Path
+
+          path = Path("jobs/groq-ablation/harbor-groq-free-ablation/result.json")
+          data = json.loads(path.read_text())
+          stats = data.get("stats", {})
+          expected = 3
+          if (
+              stats.get("n_total_trials") != expected
+              or stats.get("n_completed_trials") != expected
+              or stats.get("n_errored_trials", 0) != 0
+          ):
+              raise SystemExit(
+                  "Ablation group did not produce three error-free trials: "
+                  + json.dumps(stats, sort_keys=True)
+              )
+          for name, group in stats.get("evals", {}).items():
+              if group.get("n_trials") != expected or group.get("n_errors", 0) != 0:
+                  raise SystemExit(f"Ablation evaluation has errors: {name}: {group}")
+          print("Ablation validation passed: 3/3 trials completed without exceptions.")
+          PYRESULT
 
       - name: Upload real Harbor result.json and trajectory.json files
         if: always()

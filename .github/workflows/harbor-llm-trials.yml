@@ -1,0 +1,89 @@
+name: Harbor LLM trials (FREE Groq model only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harbor-trials:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      # Free-plan Groq key. OPENAI_API_KEY is an alias for Terminus-2 preflight;
+      # LiteLLM routes the model to Groq using the groq/ provider prefix.
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - name: Check out submission
+        uses: actions/checkout@v4
+
+      - name: Confirm the free Groq model is accessible
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "Missing GROQ_API_KEY. Add it under Settings > Secrets and variables > Actions." >&2
+            exit 2
+          fi
+          curl --fail --silent --show-error \
+            https://api.groq.com/openai/v1/models \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            -H "Content-Type: application/json" \
+            -o /tmp/groq-models.json
+          python - <<'PYMODELS'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/groq-models.json").read_text())
+          model_ids = {item.get("id") for item in data.get("data", [])}
+          expected = "openai/gpt-oss-20b"
+          if expected not in model_ids:
+              raise SystemExit(
+                  f"Required free-plan model {expected!r} is not accessible to this key."
+              )
+          print(f"Confirmed free-plan model access: {expected}")
+          PYMODELS
+
+      - name: Install uv and Harbor
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          uv tool install harbor
+          harbor --help
+
+      - name: Use binary verifier for assignment calibration
+        run: bash scripts/use_binary_verifier.sh
+
+      - name: Run baseline group (three sequential trials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
+          harbor run -p ./tasks/reconcile-bug \
+            -a terminus-2 \
+            --model groq/openai/gpt-oss-20b \
+            -k 3 -n 1
+
+      - name: Run one-change ablation group (three sequential trials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
+          harbor run -p ./tasks/reconcile-bug \
+            -a terminus-2 \
+            --model groq/openai/gpt-oss-20b \
+            -k 3 -n 1
+
+      - name: Upload real Harbor result.json and trajectory.json files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harbor-free-groq-baseline-and-ablation-jobs
+          path: jobs/
+          if-no-files-found: warn
+          retention-days: 30

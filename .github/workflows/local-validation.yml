@@ -1,5 +1,9 @@
 name: Local reward verifier and Harbor smoke test
 
+concurrency:
+  group: harbor-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, master]

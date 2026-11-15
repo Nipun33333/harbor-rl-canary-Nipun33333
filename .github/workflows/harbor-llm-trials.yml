@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
-          harbor run --path ./tasks/reconcile-bug \
+          harbor run --path ./tasks \
             --agent terminus-2 \
             --model groq/openai/gpt-oss-20b \
             --n-attempts 3 --n-concurrent 1
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
-          harbor run --path ./tasks/reconcile-bug \
+          harbor run --path ./tasks \
             --agent terminus-2 \
             --model groq/openai/gpt-oss-20b \
             --n-attempts 3 --n-concurrent 1

@@ -42,7 +42,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           uv tool install harbor==0.26.0
           harbor --version
-      - name: Validate Groq JobConfigs without making an inference call
+      - name: Validate Groq Qwen JobConfigs without making an inference call
         env:
           GROQ_API_KEY: validation-placeholder-not-a-real-key
         shell: bash
@@ -57,10 +57,10 @@ jobs:
           for path in ("/tmp/groq-baseline-config.json", "/tmp/groq-ablation-config.json"):
               config = json.loads(Path(path).read_text())
               assert config["agents"][0]["name"] == "terminus-2"
-              assert config["agents"][0]["model_name"] == "groq/openai/gpt-oss-20b"
+              assert config["agents"][0]["model_name"] == "groq/qwen/qwen3.8-27b"
               assert config["tasks"][0]["path"].endswith("tasks/reconcile-bug")
               assert config["n_attempts"] == 3
-          print("Both Groq JobConfigs are valid; no model inference was called.")
+          print("Both Groq Qwen JobConfigs are valid; no model inference was called.")
           PY
       - name: Run Harbor no-op Docker smoke trial
         run: harbor run --config .github/configs/harbor-nop-smoke.yml --yes

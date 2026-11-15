@@ -1,0 +1,14 @@
+job_name: harbor-groq-free-baseline
+jobs_dir: jobs/groq-baseline
+n_attempts: 3
+n_concurrent_trials: 1
+environment:
+  type: docker
+tasks:
+  - path: tasks/reconcile-bug
+agents:
+  - name: terminus-2
+    model_name: groq/openai/gpt-oss-20b
+    model_api_key_name: GROQ_API_KEY
+    env:
+      GROQ_API_KEY: ${GROQ_API_KEY}

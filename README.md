@@ -20,7 +20,7 @@ The binary calibration verifier is all-or-nothing: a trial receives `1.00` only 
 
 ## 3. Ablation & RL Advantage Table (`terminus-2`, `k=3`)
 
-**Fill this table only from the six real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed in GitHub Actions: `nop` scored `0.00` and `oracle` scored `1.00`. The six baseline and ablation LLM trials remain pending until a Groq Free-plan API key is added as the `GROQ_API_KEY` repository Actions secret; no model inference call has been made yet.
+**Fill this table only from the six real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed in GitHub Actions: `nop` scored `0.00` and `oracle` scored `1.00`. The six baseline and ablation LLM trials remain pending until a Groq Free-plan API key is configured as the `GROQ_API_KEY` repository Actions secret. The first inference run exposed a GPT-OSS native tool-call incompatibility with Harbor Terminus 2; the workflow now targets Qwen3.8-27B and validates that all six trials finish without exceptions.
 
 | Run | Change tested | Trial 1 (Binary / Dense) | Trial 2 (Binary / Dense) | Trial 3 (Binary / Dense) | Mean Binary | Mean Dense | Binary advantages (T1, T2, T3) | Dense advantages (T1, T2, T3) |
 | :-- | :-- | :-- | :-- | :-- | --: | --: | :-- | :-- |
@@ -74,7 +74,7 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 7. AI Tool Workflow
 
-- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `openai/gpt-oss-20b` using the Groq Free plan. Enter the exact model and agent actually used after the six real jobs finish.
+- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The configured model for the rerun is `qwen/qwen3.8-27b`; replace this only if the final verified run uses a different model.
 - **Transcript export:** Add the authentic exported chat/session file(s) to `ai_transcripts/`. Do not put API keys, `.env` files, or credentials in this repository.
 - **Prompt leakage:** Keep the task instruction focused on the public interface and business rules; do not include implementation details, bug line numbers, verifier weights, or hidden test construction in the agent-facing instruction. This submission keeps the task instruction separate from the hidden verifier file.
 

@@ -51,12 +51,12 @@ LLM_CONFIGS = tuple(EXPECTED)
 # 1,000 output-token-per-minute Free account. The completion cap is deliberately
 # well under the output ceiling: the account reserves max_tokens on every request,
 # so a cap near the ceiling lets only one request per minute through.
-MAX_TURNS = 6
+MAX_TURNS = 5
 MAX_COMPLETION_TOKENS = 600
 MAX_PANE_WIDTH = 120
 MAX_PANE_HEIGHT = 24
-# The timeout must cover the pacing this repository mandates: >=60s per turn for
-# the output-token window, so six turns is >=360s of waiting before model latency.
+# The timeout must cover the pacing this repository mandates: 75s per turn for the
+# output-token window, so five turns is >=375s of waiting before model latency.
 MAX_AGENT_TIMEOUT_SEC = 900
 MAX_BASE_PROMPT_TOKENS = 2600
 

@@ -35,9 +35,8 @@ The output must be deterministic for the same input. Do not print diagnostics to
 
 ## Execution guidance
 
+- The program is short and its defects are localized. Read it once (`sed -n '1,120p' /app/reconcile.py`), then fix every defect in a single patch command, or at most two. Do not rewrite the whole program.
 - Keep every response small: aim for at most about 350 output tokens. This run allows 1,000 output tokens per minute and reserves your whole completion budget on each request, so a single enormous response is truncated before it finishes.
-- Repair the program with targeted edits. Inspect only the lines you need (`sed -n '1,40p' /app/reconcile.py`), then change just the broken logic with a short `python - <<'PY'` edit.
-- If the file must be rewritten wholesale, do it in at most two parts (write, then append the remainder) rather than one very long command.
-- Keep terminal output small. Do not print the whole source file.
-- Verify with `python -m py_compile /app/reconcile.py` and one concise CSV test covering deduplication, status filtering, and timezone comparison.
-- When the implementation passes the checks, return `task_complete: true` rather than continuing with extra inspection.
+- Keep the payload compact. Every command you issue is re-sent with the next request, so write only the lines you are changing and never repeat source you have already sent.
+- Verify with one command that compiles the program and runs a single concise CSV test covering deduplication, status filtering and timezone comparison.
+- When the checks pass, return `task_complete: true` immediately; do not keep inspecting or re-testing.

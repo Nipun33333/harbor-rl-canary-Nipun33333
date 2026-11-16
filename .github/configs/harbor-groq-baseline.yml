@@ -38,7 +38,7 @@ agents:
     override_timeout_sec: 900
     temperature: 0
     kwargs:
-      max_turns: 6
+      max_turns: 5
       parser_name: json
       # Summarisation issues an extra full-conversation request at exactly the
       # moment the context is largest; on a 200K tokens/day account that is the

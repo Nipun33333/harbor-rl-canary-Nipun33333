@@ -20,12 +20,12 @@ The binary calibration verifier is all-or-nothing: a trial receives `1.00` only 
 
 ## 3. Ablation & RL Advantage Table (`terminus-2`, `k=3`)
 
-**Fill this table only from real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed: `nop` scored `0.00` and `oracle` scored `1.00`. Run #4 completed the three baseline evaluations but all three ended with `AgentTimeoutError`; their binary verifier rewards were `0.00`, `0.00`, and `1.00` (mean `0.333`). The ablation group was skipped. No clean six-trial comparison is available yet. The failures came from Groq Free input-token-per-minute and tokens-per-day limits, not an invalid API key.
+**Fill this table only from clean, real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed: `nop` scored `0.00` and `oracle` scored `1.00`. Legacy run #4 was a diagnostic pilot: baseline rewards were `0.00`, `0.00`, and `1.00` (mean `0.333`), but all three ended with `AgentTimeoutError` and the ablation group was skipped. Those pilot values are documented below but are not entered as final comparison data. The failures came from Groq Free input-token-per-minute and tokens-per-day limits, not an invalid API key.
 
 | Run | Change tested | Trial 1 (Binary / Dense) | Trial 2 (Binary / Dense) | Trial 3 (Binary / Dense) | Mean Binary | Mean Dense | Binary advantages (T1, T2, T3) | Dense advantages (T1, T2, T3) |
 | :-- | :-- | :-- | :-- | :-- | --: | --: | :-- | :-- |
-| Run 1: Baseline (run #4; timed out) | Original instruction | `0.00 / PENDING` | `0.00 / PENDING` | `1.00 / PENDING` | `0.333` | PENDING | `-0.333, -0.333, +0.667` | PENDING |
-| Run 2: Ablation | Add one explicit CLI invocation/output example to `instruction.md` | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Run 1: Baseline | Base task + shared execution guidance | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Run 2: Ablation | Baseline + one explicit CLI invocation/output example | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 For each run and each reward type, calculate:
 
@@ -37,7 +37,7 @@ A small offline helper is provided at `scripts/calculate_advantages.py`. It calc
 
 ## 4. Trajectory Forensics (`trajectory.json`)
 
-- **Run 1 failure (run #4):** Qwen3.8-27B repeatedly split `/app/reconcile.py` into multiple append operations, then re-read the full file and performed additional checks. This grew the conversation until requests exceeded Groq Free ITPM/TPD limits; each trial ended with `AgentTimeoutError` after 300 seconds. The third trial had a correct implementation and a binary verifier reward of `1.00`, but still timed out.
+- **Legacy run #4 failure:** Qwen3.8-27B split `/app/reconcile.py` into multiple append operations, re-read the full file, and ran extra checks. This grew the conversation until requests exceeded Groq Free ITPM/TPD limits. All three trials ended with `AgentTimeoutError` after 300 seconds; one had a correct implementation and binary reward `1.00` but still timed out. The new baseline and ablation both use the same execution-efficiency guidance so the single ablation example remains the only treatment difference.
 - **Ablation hypothesis:** The added CLI example should reduce invocation/interface mistakes. Compare actual Run 1 and Run 2 trajectories to see whether the agent first discovers the intended one-argument CLI and whether that change affects its later tests. Do not claim an improvement unless the logs show it.
 - **Run 2 result:** PENDING. Run #4 failed before the ablation group started.
 

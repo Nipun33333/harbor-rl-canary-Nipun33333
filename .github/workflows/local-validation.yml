@@ -60,10 +60,16 @@ jobs:
               assert config["agents"][0]["model_name"] == "groq/qwen/qwen3.8-27b"
               assert config["tasks"][0]["path"].endswith("tasks/reconcile-bug")
               assert config["n_attempts"] == 3
-              call_kwargs = config["agents"][0]["kwargs"]["llm_call_kwargs"]
-              assert call_kwargs["max_tokens"] == 768
-              assert call_kwargs["num_retries"] == 6
-          print("Both Groq Qwen JobConfigs have the output-token cap and retry settings; no model inference was called.")
+              agent = config["agents"][0]
+              assert agent["override_timeout_sec"] == 900
+              agent_kwargs = agent["kwargs"]
+              assert agent_kwargs["max_turns"] == 6
+              assert agent_kwargs["enable_summarize"] is True
+              assert agent_kwargs["reasoning_effort"] == "none"
+              call_kwargs = agent_kwargs["llm_call_kwargs"]
+              assert call_kwargs["max_tokens"] == 512
+              assert call_kwargs["num_retries"] == 3
+          print("Both Groq Qwen JobConfigs have bounded turns, timeout, and token/retry settings; no inference call was made.")
           PY
       - name: Run Harbor no-op Docker smoke trial
         run: harbor run --config .github/configs/harbor-nop-smoke.yml --yes

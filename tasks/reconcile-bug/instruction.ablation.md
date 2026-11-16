@@ -35,3 +35,11 @@ The output must be deterministic for the same input. Do not print diagnostics to
 ## Additional example (the only ablation change)
 
 For example, running `python /app/reconcile.py /app/sample_transactions.csv` should print a JSON object to the terminal, not write to a second output path. This example clarifies the intended command-line interaction; the sample path is illustrative and is not guaranteed to exist in the container.
+
+
+## Execution guidance
+
+- Replace `/app/reconcile.py` with one complete file write; do not build it through several append operations.
+- Keep terminal output small. Do not print the entire source file again after writing it.
+- Verify with `python -m py_compile /app/reconcile.py` and one concise CSV test covering deduplication, status filtering, and timezone comparison.
+- When the implementation passes the checks, return `task_complete: true` rather than continuing with extra inspection.

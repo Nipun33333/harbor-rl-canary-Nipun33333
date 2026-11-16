@@ -39,8 +39,8 @@ For example, running `python /app/reconcile.py /app/sample_transactions.csv` sho
 
 ## Execution guidance
 
-- The program is short and its defects are localized. Read it once (`sed -n '1,120p' /app/reconcile.py`), then fix every defect in a single patch command, or at most two. Do not rewrite the whole program.
-- Keep every response small: aim for at most about 350 output tokens. This run allows 1,000 output tokens per minute and reserves your whole completion budget on each request, so a single enormous response is truncated before it finishes.
-- Keep the payload compact. Every command you issue is re-sent with the next request, so write only the lines you are changing and never repeat source you have already sent.
+- You have four responses in total, so plan them: (1) read the program once with `sed -n '1,120p' /app/reconcile.py`; (2) write the corrected program in one command; (3) verify it; (4) use any remaining response to repair a failure.
+- Keep every response small: at most about 450 output tokens. This run allows 1,000 output tokens per minute and reserves your whole completion budget on each request, so a single enormous response is truncated before it finishes. If a write is cut off, use your next response to append the remainder.
+- Keep the payload compact. Every command you issue is re-sent with the next request, so write only what is needed and never repeat source you have already sent.
 - Verify with one command that compiles the program and runs a single concise CSV test covering deduplication, status filtering and timezone comparison.
-- When the checks pass, return `task_complete: true` immediately; do not keep inspecting or re-testing.
+- The verifier scores the file as it stands when your last response ends; return `task_complete: true` as soon as the checks pass rather than inspecting further.

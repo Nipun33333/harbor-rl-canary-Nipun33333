@@ -26,19 +26,20 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    # Six small turns. Growth tracks response size, so six ~350-token turns grow
-    # the conversation far less than four large ones; the largest prompt measured
-    # so far is 4,276 tokens.
+    # Four turns, because the cost of a trial is the conversation it re-sends.
+    # Measured on real trials: five turns cost 19,517 input tokens, six cost
+    # 24,777, and the actual work is read, write, verify. Four turns is that
+    # sequence plus one spare for a repair; the largest prompt ever measured is
+    # 6,049 tokens, under the 7,000 input-token/minute ceiling.
     #
-    # 900s is arithmetic, not optimism: this run mandates at least 60s of pacing
-    # per command to stay inside the 1,000 output-token/minute window, so six
-    # turns need >=360s of pure waiting before any model latency. At 420s a trial
-    # that had already produced a correct solution (reward 1.0) was killed by its
-    # own pacing, which is exactly the failure this number removes.
+    # 900s is arithmetic, not optimism: the harness paces model calls 75s apart to
+    # stay inside the 1,000 output-token/minute window, so four turns need >=300s
+    # of pure waiting before any model latency. At 420s a trial that had already
+    # produced a correct solution (reward 1.0) was killed by its own pacing.
     override_timeout_sec: 900
     temperature: 0
     kwargs:
-      max_turns: 5
+      max_turns: 4
       parser_name: json
       # Summarisation issues an extra full-conversation request at exactly the
       # moment the context is largest; on a 200K tokens/day account that is the
@@ -53,12 +54,12 @@ agents:
       tmux_pane_height: 20
       llm_call_kwargs:
         # Output budget per turn. The account allows 1,000 output tokens per
-        # minute and reserves max_tokens on every request, so this must stay far
-        # below the ceiling: at 600 two turns can share a minute, and a 600-token
-        # response is exactly the size a targeted edit needs. A single 800-token
-        # rewrite was tried and truncated mid-file, which then spiralled into
-        # per-minute rejections.
-        max_tokens: 600
+        # minute and reserves max_tokens on every request, and the harness allows
+        # one request per 75s, so 700 leaves room for a compact rewrite of this
+        # ~800-token program without crossing the per-minute allowance. 600 was
+        # tried: it forced the model into three chunks, and every chunk was
+        # re-sent afterwards, which is what made one trial cost 26,652 tokens.
+        max_tokens: 700
         # No client-side replays: a 429 that says "limit reached" is not
         # recoverable by retrying it four seconds later.
         num_retries: 0

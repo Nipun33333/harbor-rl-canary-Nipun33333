@@ -74,7 +74,7 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 7. AI Tool Workflow
 
-- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. Current configuration uses `qwen/qwen3.8-27b`, limits the agent to six turns, caps each completion at 512 tokens, sets a 900-second agent timeout, and reduces unnecessary full-file terminal output.
+- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The current configuration limits the agent to five turns, caps each completion at 384 tokens, sets a 420-second agent timeout, disables context summarisation, and shrinks the terminal pane to 100×20 so far less terminal text is re-sent with every turn. See section 11 for why each of those numbers is what it is.
 - **Transcript export:** Add the authentic exported chat/session file(s) to `ai_transcripts/`. Do not put API keys, `.env` files, or credentials in this repository.
 - **Prompt leakage:** Keep the task instruction focused on the public interface and business rules; do not include implementation details, bug line numbers, verifier weights, or hidden test construction in the agent-facing instruction. This submission keeps the task instruction separate from the hidden verifier file.
 
@@ -84,7 +84,18 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 
 - `Local reward verifier` runs the four local calibration / anti-cheat states on pushes and pull requests. The separate Harbor Docker smoke jobs run `nop` and `oracle`; the latest GitHub Actions run passed both, with reward means `0.00` and `1.00` respectively.
-- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It checks that `qwen/qwen3.8-27b` is listed for the key, then runs three baseline and three ablation `terminus-2` trials sequentially. The model-list check does not make an inference request. The workflow uploads actual `result.json` and `trajectory.json` files and fails the job when a group has exceptions. Groq Free rate limits apply; do not upgrade to the paid Developer tier.
+- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It never asks for a key change and never prints the secret. Its order is deliberate and each step is a gate:
+
+  1. validate every JobConfig against the installed Harbor 0.26.0 schema and against the Free-tier policy (`scripts/validate_job_configs.py`);
+  2. confirm `qwen/qwen3.8-27b` is listed for this key (no inference);
+  3. read the live rate-limit headers with one 1-token request (`scripts/groq_preflight.py probe`) — a 429 stops the run here with Groq's own numbers;
+  4. run the `oracle` Docker smoke (no LLM tokens) to prove the environment and verifier work;
+  5. run **one** genuine `terminus-2` trial and require it to be exception-free with evidence in `trajectory.json` that the agent wrote the file and executed it (`scripts/verify_trial_group.py --require-workspace-edit --require-test-command`);
+  6. project the cost of the remaining trials from what that one trial actually consumed and stop if it does not fit the day's budget (`scripts/groq_preflight.py budget`);
+  7. only then run the baseline group, validate it, cool down, run the ablation group, validate it.
+
+  A group is green only when it holds the required number of trials, every trial finished with zero exceptions, `result.json` parses, and `trajectory.json` exists. Rewards are never adjusted and a failing trial is never replayed. Artifacts upload even when the run fails, and the job exits non-zero when any arm is incomplete or contains an exception.
+- Groq Free limits are the binding constraint, not the settings: see section 11.
 
 ## 9. Local Validation
 
@@ -108,3 +119,40 @@ bash scripts/run_local_validation.sh
 Follow [`docs/SETUP_AND_SUBMISSION.md`](docs/SETUP_AND_SUBMISSION.md). Run all six model trials with `-n 1`, save the real `result.json` and `trajectory.json` files, export the authentic AI coding-tool transcript, update the table above, record the Loom video, and then push the clean folder.
 
 Do not commit `jobs/`, `.venv/`, `.env`, API keys, or Docker images.
+
+## 11. Groq Free-tier diagnosis and remediation
+
+The earlier attempts failed on quota, not on task design and not on Harbor configuration keys. Every JobConfig key in this repository validates against the installed Harbor 0.26.0 schema (`harbor run --print-config`), so no option was being silently ignored.
+
+### What the Free plan actually allows
+
+Groq's published Free-plan table (and `/openai/v1/models` for this key) gives:
+
+| Model | RPM | TPM | TPD |
+| :-- | --: | --: | --: |
+| `qwen/qwen3.8-27b` | 30 | 8K | 200K |
+| `openai/gpt-oss-120b` | 30 | 8K | 200K |
+| `openai/gpt-oss-20b` | 30 | 8K | 200K |
+| `openai/gpt-oss-safeguard-20b` | 3 | 2K | 200K |
+
+Every free text model shares an 8K TPM / 200K TPD ceiling, and this account's 8K TPM is split into **7,000 input + 1,000 output tokens per minute**. Switching model therefore cannot buy quota — which is why the `gpt-oss-20b → qwen3.8-27b` switch did not help. `terminus-2` on `qwen/qwen3.8-27b` remains the right choice because it is the model without the `tool_use_failed` failure mode described below.
+
+### Root causes
+
+1. **The conversation, not the setting, grew past 7,000 input tokens.** `terminus-2` re-sends the entire conversation on every turn. Turn one is only ~1,500 tokens (730-token system template, ~480-token instruction plus the initial screen), but each turn appends the model's own JSON reply *and* the terminal output. With Harbor's default 160×40 pane, a screen fallback alone can attach ~6,400 characters (~1,600 tokens). By turn three the prompt was 7,122 tokens — a request no retry can make legal.
+2. **The daily budget was already spent.** 200K TPD and roughly 15–20K tokens per 5–6 turn trial means six trials need ~100–130K. The failing runs started with ~194K already consumed, so every later request hit TPD regardless of size.
+3. **Retries amplified the damage.** Harbor's LiteLLM wrapper retries any exception three times with 4–15 s exponential backoff, and the config also set `num_retries: 3`, so a hard limit was attempted up to nine times. The server's `retry-after`, `x-ratelimit-remaining-tokens` and `x-ratelimit-reset-tokens` headers were never consulted.
+4. **`AgentTimeoutError` was a symptom.** The trials were not slow for lack of wall-clock time; they were spending it in backoff. Raising the timeout from 300 s to 900 s multiplied the wasted attempts. Two `0.0` rewards plus one `1.0` with a mean of `0.333` is what "one trial happened to finish before backoff" looks like, not a benchmark result.
+5. **`Tool choice is none, but model called a tool` is a Groq-side rejection.** It is Groq's `tool_use_failed` 400: the model emitted a tool-call block while the request declared no tools. Harbor 0.26.0's `terminus-2` never sends tool definitions at all — it parses JSON keystrokes from plain text (its own source says so), and the package contains no `tool_choice` handling. Nothing in the JobConfig can enable or disable native tool calling for this agent; the model itself has to be one that does not self-invoke tools. `gpt-oss` variants on Groq are known for it; `qwen3.8-27b` is not.
+
+### What the fix changes, and why that is the right lever
+
+- `max_tokens: 384` (was 512) keeps a turn's output under the 1,000 output-token/minute ceiling. This bounds only the output side; it is not what fixes the input problem.
+- `tmux_pane_width: 100` / `tmux_pane_height: 20` (was the 160×40 default) cuts the largest possible per-turn terminal attachment by roughly two thirds.
+- `max_turns: 5` (was 6) removes one growth step; five turns still allow read, write, test, fix, re-test.
+- `enable_summarize: false` and `proactive_summarization_threshold: 0`: summarisation issues an extra whole-conversation request — the most expensive possible call — exactly when the context is largest.
+- `num_retries: 0` and `retry.max_retries: 0`: a hard limit is not a transient error, so nothing is replayed.
+- `n_concurrent_trials: 1` plus explicit cooldowns between the arms: parallel or back-to-back trials multiply per-minute demand and guarantee 429s.
+- `override_timeout_sec: 420`: enough for five paced turns, and it no longer disguises a quota failure as a timeout.
+
+Projected cost at these settings is ~15K input + ~2K output per trial, so six trials fit inside 200K TPD with headroom, and the largest single request stays near 5K — under half of the 7,000 input-token-per-minute cap.

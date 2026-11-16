@@ -1,0 +1,36 @@
+# One genuine trial, used as the gate before any full arm is allowed to spend
+# daily quota. Same agent, same model, same token caps as the two real arms; only
+# the attempt count and the output directory differ.
+#
+# Acceptance for this gate is NOT a high reward: it is a trial that finished with
+# zero exceptions and whose trajectory shows the model actually editing the file
+# and running the tests in the container. See scripts/verify_trial_group.py.
+job_name: harbor-groq-free-smoke
+jobs_dir: jobs/groq-smoke
+n_attempts: 1
+n_concurrent_trials: 1
+retry:
+  max_retries: 0
+environment:
+  type: docker
+tasks:
+  - path: tasks/reconcile-bug
+agents:
+  - name: terminus-2
+    model_name: groq/qwen/qwen3.8-27b
+    model_api_key_name: GROQ_API_KEY
+    override_timeout_sec: 420
+    temperature: 0
+    kwargs:
+      max_turns: 5
+      parser_name: json
+      enable_summarize: false
+      proactive_summarization_threshold: 0
+      reasoning_effort: none
+      tmux_pane_width: 100
+      tmux_pane_height: 20
+      llm_call_kwargs:
+        max_tokens: 384
+        num_retries: 0
+    env:
+      GROQ_API_KEY: ${GROQ_API_KEY}

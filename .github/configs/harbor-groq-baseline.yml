@@ -1,7 +1,23 @@
+# Groq FREE plan only. No paid provider, no paid tier, no fallback model.
+#
+# Verified free-tier limits for groq/qwen/qwen3.8-27b
+# (Groq "Rate Limits" docs, Free plan table + /openai/v1/models for this key):
+#   30 RPM | 1K RPD | 8K TPM | 200K TPD
+# The organisation is also subject to a split of that TPM budget:
+#   7,000 input tokens/min  and  1,000 output tokens/min.
+# Every free text model on that plan has the same 8K TPM / 200K TPD ceiling,
+# so switching models buys no quota. Terminus 2 sends the whole conversation
+# on every turn, so the only real lever is how much text each request carries.
 job_name: harbor-groq-free-baseline
 jobs_dir: jobs/groq-baseline
 n_attempts: 3
+# One trial at a time: parallel trials multiply the per-minute token demand and
+# guarantee 429s on a 7,000 input-token-per-minute account.
 n_concurrent_trials: 1
+retry:
+  # A trial that hit a hard rate limit must not be replayed: replaying it burns
+  # daily tokens and finishes with the same exception.
+  max_retries: 0
 environment:
   type: docker
 tasks:
@@ -10,13 +26,31 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    override_timeout_sec: 900
+    # Five turns is enough for: read, write, run a test, fix, re-run. The 900s
+    # timeout this replaces only ever hid rate-limit backoff, which no amount of
+    # wall-clock budget can fix.
+    override_timeout_sec: 420
+    temperature: 0
     kwargs:
-      max_turns: 6
-      enable_summarize: true
+      max_turns: 5
+      parser_name: json
+      # Summarisation issues an extra full-conversation request at exactly the
+      # moment the context is largest; on a 200K tokens/day account that is the
+      # most expensive possible request. Off.
+      enable_summarize: false
+      proactive_summarization_threshold: 0
       reasoning_effort: none
+      # Terminal snapshots are re-sent with every turn when incremental diffing
+      # is impossible. 160x40 can attach ~6,400 characters (~1,600 tokens) to a
+      # single turn; 100x20 caps that at ~2,000 characters.
+      tmux_pane_width: 100
+      tmux_pane_height: 20
       llm_call_kwargs:
-        max_tokens: 512
-        num_retries: 3
+        # Output budget per turn. Kept under the 1,000 output-token/min ceiling
+        # so one turn can never ask for more than the account can emit.
+        max_tokens: 384
+        # No client-side replays: a 429 that says "limit reached" is not
+        # recoverable by retrying it four seconds later.
+        num_retries: 0
     env:
       GROQ_API_KEY: ${GROQ_API_KEY}

@@ -1,4 +1,17 @@
-name: Harbor LLM trials (FREE Groq model only)
+name: Harbor LLM trials (Groq Free only)
+
+# Free-tier operating rules encoded in this workflow, all verified against
+# Harbor 0.26.0 and Groq's published Free-plan limits:
+#   * groq/qwen/qwen3.8-27b : 30 RPM / 1K RPD / 8K TPM / 200K TPD
+#     (the 8K TPM is split by the account into 7K input + 1K output per minute)
+#   * one trial at a time, no trial replays, no summarisation requests
+#   * JobConfigs are validated against the installed Harbor schema first
+#   * one genuine trial must pass the gate before an arm may spend quota
+#   * the projected cost of the remaining trials is checked against the budget
+#   * each arm is validated from its own result.json + trajectory.json
+#
+# A green run means six genuine trials, zero exceptions. A rate-limited or
+# broken run fails loudly instead of reporting success.
 
 concurrency:
   group: harbor-groq-free-trials
@@ -16,38 +29,27 @@ jobs:
     timeout-minutes: 180
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      # Published Free-plan ceiling for every text model on the plan.
+      GROQ_TPD_LIMIT: "200000"
+      # Optional repo variable: tokens already spent today by other runs, so the
+      # budget gate does not assume a fresh day. Leave unset for a fresh day.
+      GROQ_TPD_ALREADY_USED: ${{ vars.GROQ_TPD_ALREADY_USED }}
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Check out submission
         uses: actions/checkout@v4
 
-      - name: Confirm free Groq Qwen model availability (no inference call)
+      - name: Confirm the Groq secret exists (value is never printed)
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$GROQ_API_KEY" ]; then
-            echo "Missing GROQ_API_KEY. Add it under Settings > Secrets and variables > Actions." >&2
+          if [ -z "${GROQ_API_KEY:-}" ]; then
+            echo "::error::GROQ_API_KEY is not set. Add it under Settings > Secrets and variables > Actions. Nothing was run."
             exit 2
           fi
-          curl --fail --silent --show-error \
-            https://api.groq.com/openai/v1/models \
-            -H "Authorization: Bearer $GROQ_API_KEY" \
-            -H "Content-Type: application/json" \
-            -o /tmp/groq-models.json
-          python - <<'PYMODELS'
-          import json
-          from pathlib import Path
+          echo "GROQ_API_KEY is present; it is never echoed, logged or committed."
 
-          data = json.loads(Path("/tmp/groq-models.json").read_text())
-          model_ids = {item.get("id") for item in data.get("data", [])}
-          expected = "qwen/qwen3.8-27b"
-          if expected not in model_ids:
-              raise SystemExit(
-                  f"Required model {expected!r} is not accessible to this key."
-              )
-          print(f"Confirmed model listing: {expected}")
-          PYMODELS
-
-      - name: Install uv and Harbor
+      - name: Install uv and Harbor 0.26.0
         shell: bash
         run: |
           set -euo pipefail
@@ -55,70 +57,113 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
           uv tool install harbor==0.26.0
-          harbor --version
+          version="$(harbor --version | tr -d '[:space:]')"
+          echo "Installed Harbor: $version"
+          if [ "$version" != "0.26.0" ]; then
+            echo "::error::Expected Harbor 0.26.0, got $version"
+            exit 1
+          fi
 
-      - name: Use binary verifier for assignment calibration
+      - name: Validate every JobConfig against the installed Harbor schema
+        run: python3 scripts/validate_job_configs.py
+
+      - name: Confirm the free model ID for this key (no inference)
+        run: python3 scripts/groq_preflight.py models
+
+      - name: Probe the live free-tier quota (one 1-token request)
+        run: python3 scripts/groq_preflight.py probe --output jobs/quota-probe.json
+
+      - name: Switch to the binary calibration verifier
         run: bash scripts/use_binary_verifier.sh
 
+      - name: Prove the task and verifier run in Docker (oracle, no LLM tokens)
+        shell: bash
+        run: |
+          set -euo pipefail
+          harbor run --config .github/configs/harbor-oracle-smoke.yml --yes
+          python3 - <<'PYORACLE'
+          import json
+          from pathlib import Path
+
+          path = Path("jobs/harbor-oracle-smoke/result.json")
+          data = json.loads(path.read_text())
+          stats = data.get("stats", {})
+          if stats.get("n_completed_trials") != 1 or stats.get("n_errored_trials", 0) != 0:
+              raise SystemExit(f"Oracle smoke failed: {json.dumps(stats, sort_keys=True)}")
+          rewards = [
+              trial.get("verifier_result", {}).get("rewards", {})
+              for trial in data.get("trial_results", [])
+          ]
+          if not any(value.get("reward", 0) == 1.0 for value in rewards):
+              raise SystemExit(f"Oracle did not score 1.0: {rewards}")
+          print("Oracle smoke passed: the environment builds and the verifier scores 1.0 for the reference solution.")
+          PYORACLE
+
+      - name: Clear the per-minute token window before the smoke trial
+        run: sleep 60
+
+      - name: "GATE: one genuine trial with the baseline instruction"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
+          harbor run --config .github/configs/harbor-groq-smoke.yml --yes
+
+      - name: "GATE: the smoke trial must be exception-free and must have used the terminal"
+        run: |
+          python3 scripts/verify_trial_group.py \
+            --jobs-root jobs/groq-smoke \
+            --job-name harbor-groq-free-smoke \
+            --arm smoke \
+            --expected 1 \
+            --require-workspace-edit \
+            --require-test-command \
+            --output jobs/summary-smoke.json
+
+      - name: "GATE: the full experiment must fit in the daily token budget"
+        run: |
+          python3 scripts/groq_preflight.py budget \
+            --jobs-root jobs \
+            --smoke-summary jobs/summary-smoke.json \
+            --trials 6 \
+            --output jobs/budget.json
+
       - name: Run baseline group (three sequential trials)
+        shell: bash
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
           harbor run --config .github/configs/harbor-groq-baseline.yml --yes
-          python - <<'PYRESULT'
-          import json
-          from pathlib import Path
 
-          path = Path("jobs/groq-baseline/harbor-groq-free-baseline/result.json")
-          data = json.loads(path.read_text())
-          stats = data.get("stats", {})
-          expected = 3
-          if (
-              stats.get("n_total_trials") != expected
-              or stats.get("n_completed_trials") != expected
-              or stats.get("n_errored_trials", 0) != 0
-          ):
-              raise SystemExit(
-                  "Baseline group did not produce three error-free trials: "
-                  + json.dumps(stats, sort_keys=True)
-              )
-          for name, group in stats.get("evals", {}).items():
-              if group.get("n_trials") != expected or group.get("n_errors", 0) != 0:
-                  raise SystemExit(f"Baseline evaluation has errors: {name}: {group}")
-          print("Baseline validation passed: 3/3 trials completed without exceptions.")
-          PYRESULT
+      - name: Validate the baseline group
+        run: |
+          python3 scripts/verify_trial_group.py \
+            --jobs-root jobs/groq-baseline \
+            --job-name harbor-groq-free-baseline \
+            --arm baseline \
+            --expected 3 \
+            --output jobs/summary-baseline.json
+
+      - name: Cooldown so the ablation arm starts with a clear per-minute window
+        run: sleep 180
 
       - name: Run one-change ablation group (three sequential trials)
+        shell: bash
         run: |
           set -euo pipefail
-          # Let the Free-plan per-minute token window recover before the next group.
-          sleep 60
           cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
           harbor run --config .github/configs/harbor-groq-ablation.yml --yes
-          python - <<'PYRESULT'
-          import json
-          from pathlib import Path
 
-          path = Path("jobs/groq-ablation/harbor-groq-free-ablation/result.json")
-          data = json.loads(path.read_text())
-          stats = data.get("stats", {})
-          expected = 3
-          if (
-              stats.get("n_total_trials") != expected
-              or stats.get("n_completed_trials") != expected
-              or stats.get("n_errored_trials", 0) != 0
-          ):
-              raise SystemExit(
-                  "Ablation group did not produce three error-free trials: "
-                  + json.dumps(stats, sort_keys=True)
-              )
-          for name, group in stats.get("evals", {}).items():
-              if group.get("n_trials") != expected or group.get("n_errors", 0) != 0:
-                  raise SystemExit(f"Ablation evaluation has errors: {name}: {group}")
-          print("Ablation validation passed: 3/3 trials completed without exceptions.")
-          PYRESULT
+      - name: Validate the ablation group
+        run: |
+          python3 scripts/verify_trial_group.py \
+            --jobs-root jobs/groq-ablation \
+            --job-name harbor-groq-free-ablation \
+            --arm ablation \
+            --expected 3 \
+            --output jobs/summary-ablation.json
 
-      - name: Upload real Harbor result.json and trajectory.json files
+      - name: Upload real result.json and trajectory.json files
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -126,3 +171,59 @@ jobs:
           path: jobs/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Final acceptance gate
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYACCEPT'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          arms = ["smoke", "baseline", "ablation"]
+          missing, failed = [], []
+          lines = ["## Harbor Free-tier trial acceptance", ""]
+
+          for arm in arms:
+              path = Path(f"jobs/summary-{arm}.json")
+              if not path.exists():
+                  missing.append(arm)
+                  lines.append(f"- `{arm}`: no summary produced (the arm did not finish)")
+                  continue
+              summary = json.loads(path.read_text())
+              ok = summary.get("ok") and not summary.get("failures")
+              if not ok:
+                  failed.append(arm)
+              rewards = summary.get("rewards") or {}
+              lines.append(
+                  f"- `{arm}`: {'PASS' if ok else 'FAIL'} - "
+                  f"{summary.get('n_trials')} trial(s), "
+                  f"mean reward {rewards.get('mean', 'n/a')}, "
+                  f"pass@2 {rewards.get('pass_at_2', 'n/a')}, "
+                  f"{summary.get('tokens', {}).get('total', 0)} tokens used"
+              )
+              for failure in summary.get("failures") or []:
+                  lines.append(f"  - {failure}")
+
+          lines.append("")
+          lines.append(
+              "All six trials completed with zero exceptions."
+              if not missing and not failed
+              else "This run does NOT satisfy the acceptance criteria."
+          )
+          report = "\n".join(lines)
+          print(report)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a", encoding="utf-8") as handle:
+                  handle.write(report + "\n")
+
+          if missing or failed:
+              for arm in missing:
+                  print(f"::error::{arm}: no validated summary")
+              for arm in failed:
+                  print(f"::error::{arm}: validation failed")
+              sys.exit(1)
+          PYACCEPT

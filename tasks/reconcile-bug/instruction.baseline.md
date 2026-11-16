@@ -31,3 +31,11 @@ Write a JSON object with exactly these keys:
 - `failed_count`: integer number of winning `FAILED` transactions
 
 The output must be deterministic for the same input. Do not print diagnostics to standard output.
+
+
+## Execution guidance
+
+- Replace `/app/reconcile.py` with one complete file write; do not build it through several append operations.
+- Keep terminal output small. Do not print the entire source file again after writing it.
+- Verify with `python -m py_compile /app/reconcile.py` and one concise CSV test covering deduplication, status filtering, and timezone comparison.
+- When the implementation passes the checks, return `task_complete: true` rather than continuing with extra inspection.

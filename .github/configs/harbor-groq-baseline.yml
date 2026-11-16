@@ -26,20 +26,22 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    # Four turns, because the cost of a trial is the conversation it re-sends.
-    # Measured on real trials: five turns cost 19,517 input tokens, six cost
-    # 24,777, and the actual work is read, write, verify. Four turns is that
-    # sequence plus one spare for a repair; the largest prompt ever measured is
-    # 6,049 tokens, under the 7,000 input-token/minute ceiling.
+    # Five turns, sized by measurement. A trial re-sends its whole conversation,
+    # so turn count is cost: five turns cost 19,517 input tokens, six cost 24,777.
+    # Four was tried across one smoke and one arm: the smoke read the program,
+    # spent a turn on an inspection command, wrote the file and ended without ever
+    # verifying it, scoring 0.0 - the budget must include read, write, verify and
+    # one repair. The largest prompt ever measured (6,049 tokens) stays under the
+    # 7,000 input-token/minute ceiling.
     #
     # 900s is arithmetic, not optimism: the harness paces model calls 75s apart to
-    # stay inside the 1,000 output-token/minute window, so four turns need >=300s
+    # stay inside the 1,000 output-token/minute window, so five turns need >=375s
     # of pure waiting before any model latency. At 420s a trial that had already
     # produced a correct solution (reward 1.0) was killed by its own pacing.
     override_timeout_sec: 900
     temperature: 0
     kwargs:
-      max_turns: 4
+      max_turns: 5
       parser_name: json
       # Summarisation issues an extra full-conversation request at exactly the
       # moment the context is largest; on a 200K tokens/day account that is the

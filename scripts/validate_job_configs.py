@@ -48,11 +48,11 @@ EXPECTED: dict[str, dict] = {
 LLM_CONFIGS = tuple(EXPECTED)
 
 # Hard caps this repository will not exceed on a 7,000 input-token-per-minute /
-# 1,000 output-token-per-minute Free account. The completion cap must sit under
-# the output ceiling, but not so low that a complete file write cannot fit in a
-# single turn - which is what stranded the earlier runs.
-MAX_TURNS = 5
-MAX_COMPLETION_TOKENS = 800
+# 1,000 output-token-per-minute Free account. The completion cap is deliberately
+# well under the output ceiling: the account reserves max_tokens on every request,
+# so a cap near the ceiling lets only one request per minute through.
+MAX_TURNS = 6
+MAX_COMPLETION_TOKENS = 600
 MAX_PANE_WIDTH = 120
 MAX_PANE_HEIGHT = 24
 MAX_AGENT_TIMEOUT_SEC = 600

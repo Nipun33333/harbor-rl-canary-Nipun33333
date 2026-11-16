@@ -116,6 +116,12 @@ def cmd_models(args: argparse.Namespace) -> int:
         return 2
 
     print(f"Model listing OK: {REQUIRED_MODEL} is available to this key.")
+    for item in payload.get("data", []):
+        if item.get("id") == REQUIRED_MODEL:
+            print(
+                f"  context window: {item.get('context_window')} tokens, "
+                f"max completion: {item.get('max_completion_tokens')}"
+            )
     print("Free-plan text models and published ceilings (Groq Rate Limits docs):")
     for model_id, limits in FREE_TEXT_MODELS.items():
         state = "available" if model_id in model_ids else "not listed for this key"

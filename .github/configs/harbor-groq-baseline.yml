@@ -34,7 +34,7 @@ agents:
     override_timeout_sec: 420
     temperature: 0
     kwargs:
-      max_turns: 4
+      max_turns: 6
       parser_name: json
       # Summarisation issues an extra full-conversation request at exactly the
       # moment the context is largest; on a 200K tokens/day account that is the
@@ -48,11 +48,13 @@ agents:
       tmux_pane_width: 100
       tmux_pane_height: 20
       llm_call_kwargs:
-        # Output budget per turn. The Free account allows 1,000 output tokens per
-        # minute, and /app/reconcile.py is ~550 tokens of code: a cap below that
-        # makes the task impossible to finish in one write. 800 leaves room for
-        # the JSON envelope and still fits inside a single minute's allowance.
-        max_tokens: 800
+        # Output budget per turn. The account allows 1,000 output tokens per
+        # minute and reserves max_tokens on every request, so this must stay far
+        # below the ceiling: at 600 two turns can share a minute, and a 600-token
+        # response is exactly the size a targeted edit needs. A single 800-token
+        # rewrite was tried and truncated mid-file, which then spiralled into
+        # per-minute rejections.
+        max_tokens: 600
         # No client-side replays: a 429 that says "limit reached" is not
         # recoverable by retrying it four seconds later.
         num_retries: 0

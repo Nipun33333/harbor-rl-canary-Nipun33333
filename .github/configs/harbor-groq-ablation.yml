@@ -19,7 +19,7 @@ agents:
     override_timeout_sec: 420
     temperature: 0
     kwargs:
-      max_turns: 5
+      max_turns: 4
       parser_name: json
       enable_summarize: false
       proactive_summarization_threshold: 0

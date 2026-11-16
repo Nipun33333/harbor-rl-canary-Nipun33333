@@ -26,13 +26,15 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    # Five turns is enough for: read, write, run a test, fix, re-run. The 900s
-    # timeout this replaces only ever hid rate-limit backoff, which no amount of
-    # wall-clock budget can fix.
+    # Four turns: read, write, test, fix/re-test. Measured growth on this task is
+    # ~1,590 input tokens per turn (1,281 then 2,872), so a fifth turn would ask
+    # for ~7,600 tokens in one request - over the 7,000 input-token/minute cap.
+    # The 900s timeout this replaces only ever hid rate-limit backoff, which no
+    # amount of wall-clock budget can fix.
     override_timeout_sec: 420
     temperature: 0
     kwargs:
-      max_turns: 5
+      max_turns: 4
       parser_name: json
       # Summarisation issues an extra full-conversation request at exactly the
       # moment the context is largest; on a 200K tokens/day account that is the

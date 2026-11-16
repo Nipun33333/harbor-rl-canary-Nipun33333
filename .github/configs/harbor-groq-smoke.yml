@@ -30,7 +30,7 @@ agents:
       tmux_pane_width: 100
       tmux_pane_height: 20
       llm_call_kwargs:
-        max_tokens: 384
+        max_tokens: 800
         num_retries: 0
     env:
       GROQ_API_KEY: ${GROQ_API_KEY}

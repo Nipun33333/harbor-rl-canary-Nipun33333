@@ -81,23 +81,14 @@ jobs:
         run: |
           set -euo pipefail
           harbor run --config .github/configs/harbor-oracle-smoke.yml --yes
-          python3 - <<'PYORACLE'
-          import json
-          from pathlib import Path
-
-          path = Path("jobs/harbor-oracle-smoke/result.json")
-          data = json.loads(path.read_text())
-          stats = data.get("stats", {})
-          if stats.get("n_completed_trials") != 1 or stats.get("n_errored_trials", 0) != 0:
-              raise SystemExit(f"Oracle smoke failed: {json.dumps(stats, sort_keys=True)}")
-          rewards = [
-              trial.get("verifier_result", {}).get("rewards", {})
-              for trial in data.get("trial_results", [])
-          ]
-          if not any(value.get("reward", 0) == 1.0 for value in rewards):
-              raise SystemExit(f"Oracle did not score 1.0: {rewards}")
-          print("Oracle smoke passed: the environment builds and the verifier scores 1.0 for the reference solution.")
-          PYORACLE
+          python3 scripts/verify_trial_group.py \
+            --jobs-root jobs \
+            --job-name harbor-oracle-smoke \
+            --arm oracle \
+            --expected 1 \
+            --skip-trajectory-checks \
+            --expect-reward 1.0 \
+            --output jobs/summary-oracle.json
 
       - name: Clear the per-minute token window before the smoke trial
         run: sleep 60
@@ -182,7 +173,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          arms = ["smoke", "baseline", "ablation"]
+          arms = ["oracle", "smoke", "baseline", "ablation"]
           missing, failed = [], []
           lines = ["## Harbor Free-tier trial acceptance", ""]
 
@@ -209,7 +200,8 @@ jobs:
 
           lines.append("")
           lines.append(
-              "All six trials completed with zero exceptions."
+              "All six trials completed with zero exceptions, and the oracle "
+              "calibration scored 1.0."
               if not missing and not failed
               else "This run does NOT satisfy the acceptance criteria."
           )

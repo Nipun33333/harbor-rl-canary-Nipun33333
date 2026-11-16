@@ -74,7 +74,7 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 7. AI Tool Workflow
 
-- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The current configuration limits the agent to five turns, caps each completion at 384 tokens, sets a 420-second agent timeout, disables context summarisation, and shrinks the terminal pane to 100×20 so far less terminal text is re-sent with every turn. See section 11 for why each of those numbers is what it is.
+- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The current configuration limits the agent to five turns, caps each completion at 800 tokens, sets a 420-second agent timeout, disables context summarisation, shrinks the terminal pane to 100×20 so far less terminal text is re-sent with every turn, and states the one-minute pacing the free tier requires in the shared execution guidance of both arms. See section 11 for why each of those numbers is what it is.
 - **Transcript export:** Add the authentic exported chat/session file(s) to `ai_transcripts/`. Do not put API keys, `.env` files, or credentials in this repository.
 - **Prompt leakage:** Keep the task instruction focused on the public interface and business rules; do not include implementation details, bug line numbers, verifier weights, or hidden test construction in the agent-facing instruction. This submission keeps the task instruction separate from the hidden verifier file.
 
@@ -147,12 +147,13 @@ Every free text model shares an 8K TPM / 200K TPD ceiling, and this account's 8K
 
 ### What the fix changes, and why that is the right lever
 
-- `max_tokens: 384` (was 512) keeps a turn's output under the 1,000 output-token/minute ceiling. This bounds only the output side; it is not what fixes the input problem.
+- `max_tokens: 800` (was 512): the output ceiling is 1,000 tokens per minute and `/app/reconcile.py` is roughly 550 tokens of code, so a cap below that makes the task impossible to finish in one write — which is what happened before. 800 leaves room for the JSON envelope and still fits inside a single minute's output allowance. This bounds the output side only; it is not what fixes the input problem.
 - `tmux_pane_width: 100` / `tmux_pane_height: 20` (was the 160×40 default) cuts the largest possible per-turn terminal attachment by roughly two thirds.
 - `max_turns: 5` (was 6) removes one growth step; five turns still allow read, write, test, fix, re-test.
 - `enable_summarize: false` and `proactive_summarization_threshold: 0`: summarisation issues an extra whole-conversation request — the most expensive possible call — exactly when the context is largest.
 - `num_retries: 0` and `retry.max_retries: 0`: a hard limit is not a transient error, so nothing is replayed.
 - `n_concurrent_trials: 1` plus explicit cooldowns between the arms: parallel or back-to-back trials multiply per-minute demand and guarantee 429s.
+- Pacing between model calls comes from the instruction, because Harbor has no inter-turn delay setting: both arms tell the agent to set `duration` to at least 60 on each command, so consecutive calls land in different one-minute output windows. `duration` is how long the harness waits for a command, so this is a real wait, not a simulated one, and it is identical in both arms.
 - `override_timeout_sec: 420`: enough for five paced turns, and it no longer disguises a quota failure as a timeout.
 
-Projected cost at these settings is ~15K input + ~2K output per trial, so six trials fit inside 200K TPD with headroom, and the largest single request stays near 5K — under half of the 7,000 input-token-per-minute cap.
+Projected cost at these settings is ~8–10K input + ~1–2K output per trial once the pacing keeps each turn in its own minute, so six trials fit inside 200K TPD with headroom, and the largest single request stays near 5K — under the 7,000 input-token-per-minute cap.

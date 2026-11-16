@@ -141,6 +141,8 @@ def verify(
     expected: int,
     require_workspace_edit: bool,
     require_test_command: bool,
+    skip_trajectory_checks: bool = False,
+    expect_reward: float | None = None,
 ) -> dict:
     job_dir = jobs_root / job_name
     if not job_dir.is_dir():
@@ -210,6 +212,9 @@ def verify(
                 failures.append(f"{trial.name}: reward is not valid (exception policy)")
 
         trajectory_path = trial / "agent" / "trajectory.json"
+        if skip_trajectory_checks:
+            rows.append(row)
+            continue
         if not trajectory_path.exists():
             failures.append(f"{trial.name}: agent/trajectory.json is missing")
             rows.append(row)
@@ -278,6 +283,14 @@ def verify(
         # single value if a task ever publishes a differently named metric.
         value = rewards.get("reward", max(rewards.values()))
         values.append(float(value))
+    if expect_reward is not None:
+        best = max(values) if values else None
+        if best is None or best < expect_reward:
+            failures.append(
+                f"expected a reward of at least {expect_reward:g}, got "
+                f"{'none' if best is None else f'{best:g}'}"
+            )
+
     summary: dict[str, Any] = {
         "job_name": job_name,
         "expected_trials": expected,
@@ -362,6 +375,17 @@ def main() -> int:
     parser.add_argument("--require-workspace-edit", action="store_true")
     parser.add_argument("--require-test-command", action="store_true")
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--skip-trajectory-checks",
+        action="store_true",
+        help="Calibration agents (nop/oracle) write no trajectory.json.",
+    )
+    parser.add_argument(
+        "--expect-reward",
+        type=float,
+        default=None,
+        help="Fail unless at least one trial scored this reward or better.",
+    )
     args = parser.parse_args()
 
     try:
@@ -371,6 +395,8 @@ def main() -> int:
             args.expected,
             args.require_workspace_edit,
             args.require_test_command,
+            args.skip_trajectory_checks,
+            args.expect_reward,
         )
     except GroupFailure as exc:
         message = f"{args.arm}: {exc}"

@@ -46,9 +46,11 @@ agents:
       tmux_pane_width: 100
       tmux_pane_height: 20
       llm_call_kwargs:
-        # Output budget per turn. Kept under the 1,000 output-token/min ceiling
-        # so one turn can never ask for more than the account can emit.
-        max_tokens: 384
+        # Output budget per turn. The Free account allows 1,000 output tokens per
+        # minute, and /app/reconcile.py is ~550 tokens of code: a cap below that
+        # makes the task impossible to finish in one write. 800 leaves room for
+        # the JSON envelope and still fits inside a single minute's allowance.
+        max_tokens: 800
         # No client-side replays: a 429 that says "limit reached" is not
         # recoverable by retrying it four seconds later.
         num_retries: 0

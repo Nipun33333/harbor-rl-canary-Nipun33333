@@ -43,3 +43,4 @@ For example, running `python /app/reconcile.py /app/sample_transactions.csv` sho
 - Keep terminal output small. Do not print the entire source file again after writing it.
 - Verify with `python -m py_compile /app/reconcile.py` and one concise CSV test covering deduplication, status filtering, and timezone comparison.
 - When the implementation passes the checks, return `task_complete: true` rather than continuing with extra inspection.
+- This run is limited to 1,000 output tokens per minute. Set `duration` to at least 60 on every command so consecutive model responses are spaced a minute apart; a command with nothing to wait for may use `duration: 60` as well.

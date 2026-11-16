@@ -64,6 +64,27 @@ jobs:
             exit 1
           fi
 
+      - name: Locate the Harbor interpreter for the paced runner
+        # Pacing is enforced in-process (scripts/paced_harbor.py), so it needs the
+        # interpreter that can import harbor, not just the CLI on PATH.
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARBOR_PY="$(uv tool dir)/harbor/bin/python"
+          if [ ! -x "$HARBOR_PY" ]; then
+            HARBOR_PY="$HOME/.local/share/uv/tools/harbor/bin/python"
+          fi
+          if [ ! -x "$HARBOR_PY" ]; then
+            echo "::error::Could not find the Harbor environment interpreter."
+            exit 1
+          fi
+          "$HARBOR_PY" -c "import harbor, harbor.cli.main" || {
+            echo "::error::Harbor is not importable by $HARBOR_PY"
+            exit 1
+          }
+          echo "HARBOR_PY=$HARBOR_PY" >> "$GITHUB_ENV"
+          echo "Harbor interpreter: $HARBOR_PY"
+
       - name: Validate every JobConfig against the installed Harbor schema
         run: python3 scripts/validate_job_configs.py
 
@@ -117,7 +138,7 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
-          harbor run --config .github/configs/harbor-groq-smoke.yml --yes
+          "$HARBOR_PY" scripts/paced_harbor.py run --config .github/configs/harbor-groq-smoke.yml --yes
 
       - name: "GATE: the smoke trial must be exception-free and must have used the terminal"
         run: |
@@ -143,7 +164,7 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.baseline.md tasks/reconcile-bug/instruction.md
-          harbor run --config .github/configs/harbor-groq-baseline.yml --yes
+          "$HARBOR_PY" scripts/paced_harbor.py run --config .github/configs/harbor-groq-baseline.yml --yes
 
       - name: Validate the baseline group
         run: |
@@ -162,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
-          harbor run --config .github/configs/harbor-groq-ablation.yml --yes
+          "$HARBOR_PY" scripts/paced_harbor.py run --config .github/configs/harbor-groq-ablation.yml --yes
 
       - name: Validate the ablation group
         run: |

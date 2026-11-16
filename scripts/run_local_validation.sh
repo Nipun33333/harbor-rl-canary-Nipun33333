@@ -43,5 +43,7 @@ run_verifier "hack" "0.00"
 
 # The quota gates read provider messages, so they are pure-function tested here.
 python3 "$ROOT/scripts/test_preflight_daily.py"
+# Pacing arithmetic for the Groq Free per-minute ceiling.
+python3 "$ROOT/scripts/test_paced_harbor.py"
 
 echo "All local validation states passed."

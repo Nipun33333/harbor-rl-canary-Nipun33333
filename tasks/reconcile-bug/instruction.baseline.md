@@ -40,5 +40,4 @@ The output must be deterministic for the same input. Do not print diagnostics to
 - If the file must be rewritten wholesale, do it in at most two parts (write, then append the remainder) rather than one very long command.
 - Keep terminal output small. Do not print the whole source file.
 - Verify with `python -m py_compile /app/reconcile.py` and one concise CSV test covering deduplication, status filtering, and timezone comparison.
-- Set `duration` to 90 on every command. Each request re-sends the whole conversation, so two requests inside one minute exceed the 8,000-token-per-minute ceiling; 90-second spacing guarantees a window of its own.
 - When the implementation passes the checks, return `task_complete: true` rather than continuing with extra inspection.

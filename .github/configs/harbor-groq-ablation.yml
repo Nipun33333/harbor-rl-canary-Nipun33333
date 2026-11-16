@@ -10,5 +10,8 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
+    llm_call_kwargs:
+      max_tokens: 768
+      num_retries: 6
     env:
       GROQ_API_KEY: ${GROQ_API_KEY}

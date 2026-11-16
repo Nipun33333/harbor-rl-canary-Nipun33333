@@ -287,6 +287,158 @@ def cmd_budget(args: argparse.Namespace) -> int:
     return 0
 
 
+def daily_verdict(limit: int, used: int, needed: int) -> tuple[int, bool]:
+    """Remaining daily tokens and whether they cover the planned run.
+
+    Kept pure so it can be tested without touching the API.
+    """
+    remaining = max(limit - used, 0)
+    return remaining, remaining >= needed
+
+
+def parse_daily_limits(message: str) -> dict:
+    """Pull the daily attribution out of a rate-limit message, if present.
+
+    Groq only ever states the day's usage in a 429 body, so that is the one
+    place the real figure can be read without spending tokens.
+    """
+    if "per day" not in message and "(TPD)" not in message:
+        return {}
+    numbers = extract_quota_numbers(message)
+    if numbers.get("limit") is None or numbers.get("used") is None:
+        return {}
+    return {
+        "limit": numbers["limit"],
+        "used": numbers["used"],
+        "scope": "day",
+        "retry_hint": numbers.get("retry_hint"),
+    }
+
+
+def probe_body_over(tpm_limit: int) -> dict:
+    """A request guaranteed to exceed the per-minute ceiling, so it is rejected.
+
+    A rejected request is billed nothing, which is what makes this a free way to
+    read the daily figure. Sized from the ceiling the API itself reports rather
+    than a hard-coded number, so it stays correct if the ceiling changes.
+    """
+    words = max(int(tpm_limit / 1.1) + 2000, 2000)
+    return {
+        "model": REQUIRED_MODEL,
+        "messages": [{"role": "user", "content": "compute " * words}],
+        "max_tokens": 1,
+        "temperature": 0,
+    }
+
+
+def cmd_daily(args: argparse.Namespace) -> int:
+    """Read the real daily usage without spending tokens, and gate on it.
+
+    Groq exposes per-minute limits in response headers but never the day's
+    running total. The only place that number appears is a 429 body, so this
+    sends a request that is certain to be rate limited on the per-minute ceiling
+    and reads the daily attribution out of the rejection.
+
+    It fails closed only on positive evidence that the day is short. Anything
+    the probe cannot determine (network error, an unfamiliar message shape, a
+    paid tier whose ceiling is far above the free one) continues with a warning,
+    so a transient problem can never wedge the pipeline.
+    """
+    key = api_key()
+    body = {"model": REQUIRED_MODEL, "messages": [{"role": "user", "content": "ok"}],
+            "max_tokens": 1, "temperature": 0}
+    status, headers, payload = request("POST", "/chat/completions", key, body)
+    if status != 200:
+        print(f"::warning::daily check: the sizing call returned HTTP {status}; "
+              "skipping the daily headroom gate.")
+        return 0
+
+    limits = pick_headers(headers)
+    try:
+        tpm_limit = int(str(limits.get("x-ratelimit-limit-tokens") or "0"))
+    except ValueError:
+        tpm_limit = 0
+    if tpm_limit <= 0:
+        print("::warning::daily check: no per-minute ceiling in the headers; "
+              "skipping the daily headroom gate.")
+        return 0
+    if tpm_limit > args.free_tpm_cap:
+        print(f"Daily check skipped: this key's per-minute ceiling is {tpm_limit:,} "
+              f"tokens, above the free-tier {args.free_tpm_cap:,}. The daily "
+              "budget is not the binding constraint here.")
+        return 0
+
+    needed = args.trials * args.per_trial_tokens
+    over_status, _, over_payload = request(
+        "POST", "/chat/completions", key, probe_body_over(tpm_limit)
+    )
+
+    message = ""
+    if isinstance(over_payload, dict):
+        error = over_payload.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message", ""))
+        message = message or json.dumps(over_payload)[:800]
+
+    report: dict = {
+        "per_minute_ceiling": tpm_limit,
+        "requested_tokens": over_status,
+        "needed_tokens": needed,
+        "planned_trials": args.trials,
+        "per_trial_estimate": args.per_trial_tokens,
+    }
+
+    if over_status == 200:
+        print("::warning::daily check: the oversized request was accepted, so the "
+              "tier is above the free one; not gating on the daily budget.")
+        return 0
+
+    daily = parse_daily_limits(message)
+    if not daily:
+        print("Daily headroom not stated by the provider on this rejection "
+              f"(HTTP {over_status}); the day is not the binding constraint. "
+              f"Planned {args.trials} trials x {args.per_trial_tokens:,} = "
+              f"{needed:,} tokens.")
+        report["determined"] = False
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        return 0
+
+    remaining, fits = daily_verdict(daily["limit"], daily["used"], needed)
+    report.update(
+        {
+            "determined": True,
+            "daily_limit": daily["limit"],
+            "daily_used": daily["used"],
+            "remaining": remaining,
+            "retry_hint": daily.get("retry_hint"),
+            "fits": fits,
+        }
+    )
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+    print(f"Daily budget : {daily['limit']:,}")
+    print(f"Used today   : {daily['used']:,}")
+    print(f"Remaining    : {remaining:,}")
+    print(f"Needed       : {needed:,} ({args.trials} trials x {args.per_trial_tokens:,})")
+    if daily.get("retry_hint"):
+        print(f"Provider hint: {daily['retry_hint']}")
+    if not fits:
+        print(
+            "::error::The day does not have room for the planned trials. "
+            f"{remaining:,} tokens remain against {needed:,} needed. Stopping "
+            "before the smoke trial so no budget is spent for nothing. A new key "
+            "in the same organization does not reset this - only a different "
+            "organization or a paid tier does."
+        )
+        return 4
+    print("Daily headroom covers the planned trials.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -315,6 +467,15 @@ def main() -> int:
     budget.add_argument("--safety", type=float, default=1.3)
     budget.add_argument("--output", type=Path, default=None)
     budget.set_defaults(func=cmd_budget)
+
+    daily = sub.add_parser(
+        "daily", help="Gate on the real daily usage, read from a free 429"
+    )
+    daily.add_argument("--trials", type=int, default=7)
+    daily.add_argument("--per-trial-tokens", type=int, default=15000)
+    daily.add_argument("--free-tpm-cap", type=int, default=12000)
+    daily.add_argument("--output", type=Path, default=None)
+    daily.set_defaults(func=cmd_daily)
 
     args = parser.parse_args()
     return args.func(args)

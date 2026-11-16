@@ -73,6 +73,17 @@ jobs:
       - name: Probe the live free-tier quota (one 1-token request)
         run: python3 scripts/groq_preflight.py probe --output jobs/quota-probe.json
 
+      - name: "GATE: the day must have room for the planned trials"
+        # Groq never publishes the day's running total in a header; it only
+        # appears inside a 429 body. A request sized just over the per-minute
+        # ceiling is rejected and billed nothing, which reads the real figure for
+        # free. This runs before any trial so an exhausted day cannot cost us one.
+        run: |
+          python3 scripts/groq_preflight.py daily \
+            --trials 7 \
+            --per-trial-tokens 15000 \
+            --output jobs/daily-headroom.json
+
       - name: Switch to the binary calibration verifier
         run: bash scripts/use_binary_verifier.sh
 

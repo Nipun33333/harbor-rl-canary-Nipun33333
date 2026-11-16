@@ -237,6 +237,103 @@ def sum_tokens_used(jobs_root: Path) -> tuple[int, int]:
     return total_in, total_out
 
 
+ORG_PATTERN = re.compile(r"organization\s+`?([A-Za-z0-9_\-]+)`?")
+OLD_ORGANIZATION = "org_01m32b0rsqexabshe4ryhtfb10"
+
+
+def extract_organization(text: str) -> str | None:
+    """Pull the organization id out of a Groq error message.
+
+    Groq names the organization in every rate-limit rejection, which makes a
+    rejected (and therefore unbilled) request the cheapest way to identify which
+    account a key belongs to. Kept pure so it can be tested offline.
+    """
+    match = ORG_PATTERN.search(text or "")
+    return match.group(1) if match else None
+
+
+def cmd_org(args: argparse.Namespace) -> int:
+    """Identify the organization behind GROQ_API_KEY and compare it to the old one.
+
+    A replaced secret is useless if it was minted in the same organization: the
+    daily token total is tracked per organization, so the day stays spent. This
+    checks the identity before any trial runs.
+
+    The identification request is deliberately sized above the per-minute ceiling
+    the API reports for this key, so it is rejected with 429 and billed nothing.
+    If it is ever accepted the tier is not the free one, and the usage the
+    response reports is recorded rather than assumed away.
+    """
+    key = api_key()
+    status, headers, payload = request(
+        "POST",
+        "/chat/completions",
+        key,
+        {"model": REQUIRED_MODEL, "messages": [{"role": "user", "content": "ok"}],
+         "max_tokens": 1, "temperature": 0},
+    )
+    report: dict = {"auth_ok": status == 200, "tiny_status": status}
+    if status != 200:
+        print(f"::error::The key did not authenticate (HTTP {status}).")
+        message = _error_message(payload)
+        print(f"  provider message: {message[:300]}")
+        return 2
+
+    limits = pick_headers(headers)
+    try:
+        tpm_limit = int(str(limits.get("x-ratelimit-limit-tokens") or "0")) or 8000
+    except ValueError:
+        tpm_limit = 8000
+    report["per_minute_ceiling"] = tpm_limit
+
+    over_status, _, over_payload = request(
+        "POST", "/chat/completions", key, probe_body_over(tpm_limit)
+    )
+    report["identification_status"] = over_status
+    message = _error_message(over_payload)
+    organization = extract_organization(message) or extract_organization(json.dumps(over_payload))
+
+    if over_status == 200:
+        usage = (over_payload or {}).get("usage") or {}
+        report["oversized_request_accepted"] = True
+        report["oversized_request_usage"] = usage
+        print("::warning::The oversized request was accepted, so this key is not on "
+              "the free tier; its usage is recorded in the report.")
+    if organization is None:
+        report["organization"] = None
+        print("::warning::The provider did not state an organization id on this call; "
+              "identity could not be confirmed. Continuing - the first trial would "
+              "reveal it if the day were still spent.")
+    else:
+        report["organization"] = organization
+        print(f"Organization behind this key: {organization}")
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+    if organization and args.against and organization == args.against:
+        print(
+            "::error::This key belongs to the SAME organization as the exhausted "
+            f"one ({organization}). The daily token total is tracked per "
+            "organization, so replacing the key does not restore quota. Stopping "
+            "before any trial runs: mint a key in a different organization."
+        )
+        return 5
+    if organization and args.against and organization != args.against:
+        print(f"Confirmed: {organization} differs from the exhausted organization "
+              f"{args.against}.")
+    return 0
+
+
+def _error_message(payload) -> str:
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message", "")) or json.dumps(payload)[:800]
+    return json.dumps(payload)[:800] if payload is not None else ""
+
+
 def cmd_budget(args: argparse.Namespace) -> int:
     per_trial = 0
     if args.smoke_summary and args.smoke_summary.exists():
@@ -382,7 +479,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
 
     report: dict = {
         "per_minute_ceiling": tpm_limit,
-        "requested_tokens": over_status,
+        "rejection_status": over_status,
         "needed_tokens": needed,
         "planned_trials": args.trials,
         "per_trial_estimate": args.per_trial_tokens,
@@ -467,6 +564,13 @@ def main() -> int:
     budget.add_argument("--safety", type=float, default=1.3)
     budget.add_argument("--output", type=Path, default=None)
     budget.set_defaults(func=cmd_budget)
+
+    org = sub.add_parser(
+        "org", help="Confirm the key belongs to a different organization"
+    )
+    org.add_argument("--against", default=OLD_ORGANIZATION)
+    org.add_argument("--output", type=Path, default=None)
+    org.set_defaults(func=cmd_org)
 
     daily = sub.add_parser(
         "daily", help="Gate on the real daily usage, read from a free 429"

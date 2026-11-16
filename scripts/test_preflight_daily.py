@@ -19,9 +19,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from groq_preflight import daily_verdict, parse_daily_limits, probe_body_over  # noqa: E402
+from groq_preflight import (  # noqa: E402
+    daily_verdict,
+    extract_organization,
+    parse_daily_limits,
+    probe_body_over,
+)
 
 # Captured verbatim from the failing run, trimmed only at the tail.
+OLD_ORG = "org_01m32b0rsqexabshe4ryhtfb10"
+
 REAL_TPD_MESSAGE = (
     "Rate limit reached for model `qwen/qwen3.8-27b` in organization "
     "`org_01m32b0rsqexabshe4ryhtfb10` service tier `on_demand` on tokens per day "
@@ -73,6 +80,29 @@ def test_oversize_request_always_exceeds_its_ceiling() -> None:
         assert body["max_tokens"] == 1, body["max_tokens"]
 
 
+# Captured from the real rejection that a replaced-but-same-organization key
+# produces. The organization id is the only reliable account identity Groq
+# states, and it appears in per-minute rejections too, not just daily ones.
+REAL_TPM_MESSAGE_SAME_ORG = (
+    "Rate limit reached for model `qwen/qwen3.8-27b` in organization "
+    "`org_01m32b0rsqexabshe4ryhtfb10` service tier `on_demand` on tokens per "
+    "minute (TPM): Limit 8000, Used 7500, Requested 12000."
+)
+
+
+def test_extracts_organization_from_rejection():
+    assert extract_organization(REAL_TPD_MESSAGE) == OLD_ORG
+    assert extract_organization(REAL_TPM_MESSAGE_SAME_ORG) == OLD_ORG
+    other = REAL_TPD_MESSAGE.replace(OLD_ORG, "org_09zzdifferent00")
+    assert extract_organization(other) == "org_09zzdifferent00"
+
+
+def test_no_organization_leaves_identity_unknown():
+    assert extract_organization("") is None
+    assert extract_organization("Invalid API Key") is None
+    assert extract_organization('{"error": {"message": "bad request"}}') is None
+
+
 def main() -> int:
     tests = [
         test_verdict,
@@ -80,12 +110,14 @@ def main() -> int:
         test_rejects_per_minute_message,
         test_unrelated_message_is_not_parsed,
         test_oversize_request_always_exceeds_its_ceiling,
+        test_extracts_organization_from_rejection,
+        test_no_organization_leaves_identity_unknown,
     ]
     print("Groq daily-usage gate tests")
     for test in tests:
         test()
         print(f"  {test.__name__}: ok")
-    print("All daily-usage gate cases passed.")
+    print("All preflight gate cases passed.")
     return 0
 
 

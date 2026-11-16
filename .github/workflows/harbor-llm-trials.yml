@@ -70,6 +70,14 @@ jobs:
       - name: Confirm the free model ID for this key (no inference)
         run: python3 scripts/groq_preflight.py models
 
+      - name: "GATE: the key must belong to a different Groq organization"
+        # A replaced secret minted in the same organization keeps the same daily
+        # total, so this identity check comes before anything spends a token.
+        run: |
+          python3 scripts/groq_preflight.py org \
+            --against "org_01m32b0rsqexabshe4ryhtfb10" \
+            --output jobs/org-check.json
+
       - name: Probe the live free-tier quota (one 1-token request)
         run: python3 scripts/groq_preflight.py probe --output jobs/quota-probe.json
 

@@ -74,7 +74,7 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 7. AI Tool Workflow
 
-- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The current configuration limits the agent to six turns, caps each completion at 600 tokens, sets a 420-second agent timeout, disables context summarisation, shrinks the terminal pane to 100×20 so far less terminal text is re-sent with every turn, and states the one-minute pacing the free tier requires in the shared execution guidance of both arms. See section 11 for why each of those numbers is what it is.
+- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The current configuration limits the agent to six turns, caps each completion at 600 tokens, sets a 900-second agent timeout, disables context summarisation, shrinks the terminal pane to 100×20 so far less terminal text is re-sent with every turn, and states the one-minute pacing the free tier requires in the shared execution guidance of both arms. See section 11 for why each of those numbers is what it is.
 - **Transcript export:** Add the authentic exported chat/session file(s) to `ai_transcripts/`. Do not put API keys, `.env` files, or credentials in this repository.
 - **Prompt leakage:** Keep the task instruction focused on the public interface and business rules; do not include implementation details, bug line numbers, verifier weights, or hidden test construction in the agent-facing instruction. This submission keeps the task instruction separate from the hidden verifier file.
 
@@ -154,6 +154,6 @@ Every free text model shares an 8K TPM / 200K TPD ceiling, and this account's 8K
 - `num_retries: 0` and `retry.max_retries: 0`: a hard limit is not a transient error, so nothing is replayed.
 - `n_concurrent_trials: 1` plus explicit cooldowns between the arms: parallel or back-to-back trials multiply per-minute demand and guarantee 429s.
 - Pacing between model calls comes from the instruction, because Harbor has no inter-turn delay setting: both arms tell the agent to set `duration` to at least 60 on each command, so consecutive calls land in different one-minute output windows. `duration` is how long the harness waits for a command, so this is a real wait, not a simulated one, and it is identical in both arms.
-- `override_timeout_sec: 420`: enough for five paced turns, and it no longer disguises a quota failure as a timeout.
+- `override_timeout_sec: 900`: arithmetic, not optimism. The run mandates at least 60 s of pacing per command to stay inside the 1,000 output-token-per-minute window, so six turns need 360 s of pure waiting before any model latency; at 420 s a trial that had already earned reward `1.0` was killed by its own pacing.
 
 Measured on real trials: 1,280 input tokens on turn one and ~2,400 of growth per large turn; with small responses the growth drops with the response size. A six-turn trial is budgeted at ~15K input + ~4K output, so the smoke plus six trials need ~110K of the 200K daily budget.

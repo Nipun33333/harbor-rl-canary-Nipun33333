@@ -55,7 +55,9 @@ MAX_TURNS = 6
 MAX_COMPLETION_TOKENS = 600
 MAX_PANE_WIDTH = 120
 MAX_PANE_HEIGHT = 24
-MAX_AGENT_TIMEOUT_SEC = 600
+# The timeout must cover the pacing this repository mandates: >=60s per turn for
+# the output-token window, so six turns is >=360s of waiting before model latency.
+MAX_AGENT_TIMEOUT_SEC = 900
 MAX_BASE_PROMPT_TOKENS = 2600
 
 SECRET_PATTERNS = (

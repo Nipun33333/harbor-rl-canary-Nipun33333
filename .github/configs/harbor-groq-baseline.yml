@@ -26,12 +26,16 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    # Four turns: read, write, test, fix/re-test. Measured growth on this task is
-    # ~1,590 input tokens per turn (1,281 then 2,872), so a fifth turn would ask
-    # for ~7,600 tokens in one request - over the 7,000 input-token/minute cap.
-    # The 900s timeout this replaces only ever hid rate-limit backoff, which no
-    # amount of wall-clock budget can fix.
-    override_timeout_sec: 420
+    # Six small turns. Growth tracks response size, so six ~350-token turns grow
+    # the conversation far less than four large ones; the largest prompt measured
+    # so far is 4,276 tokens.
+    #
+    # 900s is arithmetic, not optimism: this run mandates at least 60s of pacing
+    # per command to stay inside the 1,000 output-token/minute window, so six
+    # turns need >=360s of pure waiting before any model latency. At 420s a trial
+    # that had already produced a correct solution (reward 1.0) was killed by its
+    # own pacing, which is exactly the failure this number removes.
+    override_timeout_sec: 900
     temperature: 0
     kwargs:
       max_turns: 6

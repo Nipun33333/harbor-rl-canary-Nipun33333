@@ -19,7 +19,7 @@ agents:
   - name: terminus-2
     model_name: groq/qwen/qwen3.8-27b
     model_api_key_name: GROQ_API_KEY
-    override_timeout_sec: 420
+    override_timeout_sec: 900
     temperature: 0
     kwargs:
       max_turns: 6

@@ -20,11 +20,11 @@ The binary calibration verifier is all-or-nothing: a trial receives `1.00` only 
 
 ## 3. Ablation & RL Advantage Table (`terminus-2`, `k=3`)
 
-**Fill this table only from the six real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed in GitHub Actions: `nop` scored `0.00` and `oracle` scored `1.00`. The six baseline and ablation LLM trials remain pending until a Groq Free-plan API key is configured as the `GROQ_API_KEY` repository Actions secret. The first inference run exposed a GPT-OSS native tool-call incompatibility with Harbor Terminus 2; the workflow now targets Qwen3.8-27B and validates that all six trials finish without exceptions.
+**Fill this table only from real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed: `nop` scored `0.00` and `oracle` scored `1.00`. Run #4 completed the three baseline evaluations but all three ended with `AgentTimeoutError`; their binary verifier rewards were `0.00`, `0.00`, and `1.00` (mean `0.333`). The ablation group was skipped. No clean six-trial comparison is available yet. The failures came from Groq Free input-token-per-minute and tokens-per-day limits, not an invalid API key.
 
 | Run | Change tested | Trial 1 (Binary / Dense) | Trial 2 (Binary / Dense) | Trial 3 (Binary / Dense) | Mean Binary | Mean Dense | Binary advantages (T1, T2, T3) | Dense advantages (T1, T2, T3) |
 | :-- | :-- | :-- | :-- | :-- | --: | --: | :-- | :-- |
-| Run 1: Baseline | Original instruction | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| Run 1: Baseline (run #4; timed out) | Original instruction | `0.00 / PENDING` | `0.00 / PENDING` | `1.00 / PENDING` | `0.333` | PENDING | `-0.333, -0.333, +0.667` | PENDING |
 | Run 2: Ablation | Add one explicit CLI invocation/output example to `instruction.md` | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 For each run and each reward type, calculate:
@@ -37,9 +37,9 @@ A small offline helper is provided at `scripts/calculate_advantages.py`. It calc
 
 ## 4. Trajectory Forensics (`trajectory.json`)
 
-- **Run 1 failure:** PENDING. Inspect one actual failed `jobs/.../agent/trajectory.json` and record the exact command sequence where the agent missed a rule or stopped early.
+- **Run 1 failure (run #4):** Qwen3.8-27B repeatedly split `/app/reconcile.py` into multiple append operations, then re-read the full file and performed additional checks. This grew the conversation until requests exceeded Groq Free ITPM/TPD limits; each trial ended with `AgentTimeoutError` after 300 seconds. The third trial had a correct implementation and a binary verifier reward of `1.00`, but still timed out.
 - **Ablation hypothesis:** The added CLI example should reduce invocation/interface mistakes. Compare actual Run 1 and Run 2 trajectories to see whether the agent first discovers the intended one-argument CLI and whether that change affects its later tests. Do not claim an improvement unless the logs show it.
-- **Run 2 result:** PENDING. Record the actual changed commands and resulting score from the real trajectory.
+- **Run 2 result:** PENDING. Run #4 failed before the ablation group started.
 
 ## 5. Dense Reward & Anti-Cheat Design
 
@@ -74,17 +74,17 @@ A more adaptive agent could make its program detect characteristics of the verif
 
 ## 7. AI Tool Workflow
 
-- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. The configured model for the rerun is `qwen/qwen3.8-27b`; replace this only if the final verified run uses a different model.
+- **AI coding tool and model:** Harbor `terminus-2` with Groq-hosted `qwen/qwen3.8-27b` using the Groq Free plan. Current configuration uses `qwen/qwen3.8-27b`, limits the agent to six turns, caps each completion at 512 tokens, sets a 900-second agent timeout, and reduces unnecessary full-file terminal output.
 - **Transcript export:** Add the authentic exported chat/session file(s) to `ai_transcripts/`. Do not put API keys, `.env` files, or credentials in this repository.
 - **Prompt leakage:** Keep the task instruction focused on the public interface and business rules; do not include implementation details, bug line numbers, verifier weights, or hidden test construction in the agent-facing instruction. This submission keeps the task instruction separate from the hidden verifier file.
 
 ## 8. GitHub Actions
 
-> Provider note: this submission uses **Groq** (spelled with a `q`), not **Grok** from xAI. xAI's Grok API is usage-priced, so it does not meet the no-paid-API requirement. The selected alternative is `openai/gpt-oss-20b` through Groq's Free tier. The workflow is pinned to `groq/openai/gpt-oss-20b`; no paid model or fallback is configured. Keep the Groq account on its Free plan and do not enable a paid upgrade.
+> Provider note: this submission uses **Groq** (spelled with a `q`), not **Grok** from xAI. The selected model is `qwen/qwen3.8-27b` through Groq's Free plan. No paid model or fallback is configured. Keep the account on the Free plan. Its model-specific input/output and daily token limits still apply.
 
 
 - `Local reward verifier` runs the four local calibration / anti-cheat states on pushes and pull requests. The separate Harbor Docker smoke jobs run `nop` and `oracle`; the latest GitHub Actions run passed both, with reward means `0.00` and `1.00` respectively.
-- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It checks that `openai/gpt-oss-20b` is listed for the key, then runs three baseline and three ablation `terminus-2` trials sequentially. The model-list check does not make an inference request. Actual trial calls use the Groq account's available plan limits; do not upgrade to the paid Developer tier. The workflow uploads the generated `jobs/` directory as an artifact containing the actual `result.json` and `trajectory.json` files.
+- `Harbor LLM trials (FREE Groq model only)` is manually dispatched after adding `GROQ_API_KEY` as a repository Actions secret. It checks that `qwen/qwen3.8-27b` is listed for the key, then runs three baseline and three ablation `terminus-2` trials sequentially. The model-list check does not make an inference request. The workflow uploads actual `result.json` and `trajectory.json` files and fails the job when a group has exceptions. Groq Free rate limits apply; do not upgrade to the paid Developer tier.
 
 ## 9. Local Validation
 

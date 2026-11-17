@@ -19,6 +19,15 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      tokens_used:
+        description: 'Current Groq Free daily tokens used, checked in the dashboard'
+        required: true
+        type: string
+      observed_at:
+        description: 'Dashboard observation ISO-8601 timestamp with timezone (within one hour)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -31,13 +40,16 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       # Published Free-plan ceiling for every text model on the plan.
       GROQ_TPD_LIMIT: "200000"
-      # Optional repo variable: tokens already spent today by other runs, so the
-      # budget gate does not assume a fresh day. Leave unset for a fresh day.
-      GROQ_TPD_ALREADY_USED: ${{ vars.GROQ_TPD_ALREADY_USED }}
+      # Required fresh dashboard observation; never default to a fresh day.
+      GROQ_TPD_ALREADY_USED: ${{ inputs.tokens_used }}
+      GROQ_USAGE_OBSERVED_AT: ${{ inputs.observed_at }}
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Check out submission
         uses: actions/checkout@v4
+
+      - name: Check declared daily headroom before any network or inference probe
+        run: python3 scripts/check_declared_budget.py --used "$GROQ_TPD_ALREADY_USED" --observed-at "$GROQ_USAGE_OBSERVED_AT"
 
       - name: Confirm the Groq secret exists (value is never printed)
         shell: bash
@@ -91,27 +103,8 @@ jobs:
       - name: Confirm the free model ID for this key (no inference)
         run: python3 scripts/groq_preflight.py models
 
-      - name: "GATE: the key must belong to a different Groq organization"
-        # A replaced secret minted in the same organization keeps the same daily
-        # total, so this identity check comes before anything spends a token.
-        run: |
-          python3 scripts/groq_preflight.py org \
-            --against "org_01m32b0rsqexabshe4ryhtfb10" \
-            --output jobs/org-check.json
-
       - name: Probe the live free-tier quota (one 1-token request)
         run: python3 scripts/groq_preflight.py probe --output jobs/quota-probe.json
-
-      - name: "GATE: the day must have room for the planned trials"
-        # Groq never publishes the day's running total in a header; it only
-        # appears inside a 429 body. A request sized just over the per-minute
-        # ceiling is rejected and billed nothing, which reads the real figure for
-        # free. This runs before any trial so an exhausted day cannot cost us one.
-        run: |
-          python3 scripts/groq_preflight.py daily \
-            --trials 7 \
-            --per-trial-tokens 15000 \
-            --output jobs/daily-headroom.json
 
       - name: Switch to the binary calibration verifier
         run: bash scripts/use_binary_verifier.sh
@@ -176,7 +169,17 @@ jobs:
             --output jobs/summary-baseline.json
 
       - name: Cooldown so the ablation arm starts with a clear per-minute window
-        run: sleep 180
+        # Save the final code and both scores for each actual baseline trial.
+        # All-pass baseline requires recalibration, not a misleading comparison.
+        run: |
+          python3 scripts/experiment_report.py --job jobs/groq-baseline/harbor-groq-free-baseline --output jobs/baseline-advantages.json
+          python3 - <<'PY'
+          import json
+          report = json.load(open('jobs/baseline-advantages.json'))
+          if all(t['binary'] == 1 for t in report['trials']):
+              raise SystemExit('Baseline 3/3 passes: recalibrate Bug 3 before ablation.')
+          PY
+          sleep 180
 
       - name: Run one-change ablation group (three sequential trials)
         shell: bash
@@ -193,6 +196,9 @@ jobs:
             --arm ablation \
             --expected 3 \
             --output jobs/summary-ablation.json
+
+      - name: Calculate ablation binary and dense advantages from actual checks
+        run: python3 scripts/experiment_report.py --job jobs/groq-ablation/harbor-groq-free-ablation --output jobs/ablation-advantages.json
 
       - name: Upload real result.json and trajectory.json files
         if: always()
@@ -216,6 +222,11 @@ jobs:
           arms = ["oracle", "smoke", "baseline", "ablation"]
           missing, failed = [], []
           lines = ["## Harbor Free-tier trial acceptance", ""]
+
+          for arm in ("baseline", "ablation"):
+              evidence = Path(f"jobs/{arm}-advantages.json")
+              if not evidence.exists():
+                  missing.append(f"{arm} binary/dense evidence")
 
           for arm in arms:
               path = Path(f"jobs/summary-{arm}.json")

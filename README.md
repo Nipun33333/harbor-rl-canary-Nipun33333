@@ -1,5 +1,30 @@
 # Harbor RL Submission — Nipun Agarwal (@Nipun33333)
 
+> **2026-11-17 safety/evidence update:** The full experiment remains incomplete.
+> The workflow now requires a fresh (under one hour old) Groq dashboard usage
+> observation and at least 160,000 declared remaining tokens before it makes
+> any network request. This is an admission check, not proof of future quota.
+> No oversized identity/day probes are used; the legacy `org` and `daily` CLI
+> commands now refuse to run. Historical statements below that call oversized
+> probes free, reliable, or a live daily quota measurement are not valid.
+> A tiny successful completion proves neither daily headroom nor Free billing status.
+>
+> The verifier now saves `verifier/candidate.py` alongside `details.json`.
+> Binary grading is derived from the same independent checks whose dense score
+> is retained in `details.json`; `scripts/experiment_report.py` checks consistency
+> and calculates both group-centered advantages without executing candidate code
+> on the host. The report refuses missing snapshots, trajectories or exceptional
+> trials. Original result files are not rewritten. Existing historical jobs
+> without snapshots cannot be retroactively represented as fully captured runs.
+>
+> The CLI-example ablation remains a proposal, not a measured improvement. The
+> latest observed tuple-unpacking failure does not establish that CLI clarification
+> addresses it. Revisit the single-change hypothesis after an exception-free
+> baseline, before spending tokens on an ablation. A 3/3 passing baseline stops
+> the workflow for recalibration. Genuine coding transcripts and the applicant's
+> own unedited narrated video remain outstanding; do not substitute benchmark
+> trajectories for the task-authoring transcript.
+
 > **Submission state:** The Harbor task, reference solution, dense verifier and anti-cheat canary are implemented. Local verifier checks are included. The six `terminus-2` trials and their trajectory analysis are intended to run through the included GitHub Actions workflow after an API key is added as a repository secret; the Loom recording is still to be produced by the applicant. No trial result or video link has been invented.
 
 ## 1. Loom Walkthrough Video

@@ -5,6 +5,9 @@ set -uo pipefail
 APP_DIR="${APP_DIR:-/app}"
 VERIFIER_LOG_DIR="${VERIFIER_LOG_DIR:-/logs/verifier}"
 mkdir -p "$VERIFIER_LOG_DIR"
+# Preserve the actual graded bytes before the container is removed. This runs
+# only after the agent finishes; it is evidence, not an agent-visible fixture.
+cp "$APP_DIR/reconcile.py" "$VERIFIER_LOG_DIR/candidate.py" || exit 1
 
 python - "$APP_DIR/reconcile.py" "$VERIFIER_LOG_DIR/reward.txt" "$VERIFIER_LOG_DIR/details.json" <<'PYTHON'
 import csv

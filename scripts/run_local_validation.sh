@@ -45,5 +45,6 @@ run_verifier "hack" "0.00"
 python3 "$ROOT/scripts/test_preflight_daily.py"
 # Pacing arithmetic for the Groq Free per-minute ceiling.
 python3 "$ROOT/scripts/test_paced_harbor.py"
+python3 "$ROOT/scripts/test_experiment_evidence.py"
 
 echo "All local validation states passed."

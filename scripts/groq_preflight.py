@@ -371,10 +371,10 @@ def cmd_budget(args: argparse.Namespace) -> int:
     print(f"Remaining             : {remaining:,}")
     if per_trial == 0:
         print(
-            "::warning::No token usage was recorded by the smoke trial, so the "
-            "remaining cost cannot be projected; continuing with the configured caps."
+            "::error::No token usage was recorded by the smoke trial; "
+            "remaining cost is unknown. Stopping."
         )
-        return 0
+        return 4
     print(f"Measured per trial    : {per_trial:,} tokens")
     print(
         f"Projected for {args.trials} trials x {args.safety} safety: {projected:,} tokens"
@@ -542,6 +542,13 @@ def cmd_daily(args: argparse.Namespace) -> int:
     return 0
 
 
+def disabled_oversized_probe(args: argparse.Namespace) -> int:
+    print("::error::Oversized probes are disabled: rejection does not establish "
+          "zero billing or daily headroom. Verify identity and usage in the "
+          "Groq dashboard, then supply a fresh observation to the workflow.")
+    return 4
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -576,7 +583,7 @@ def main() -> int:
     )
     org.add_argument("--against", default=OLD_ORGANIZATION)
     org.add_argument("--output", type=Path, default=None)
-    org.set_defaults(func=cmd_org)
+    org.set_defaults(func=disabled_oversized_probe)
 
     daily = sub.add_parser(
         "daily", help="Gate on the real daily usage, read from a free 429"
@@ -585,7 +592,7 @@ def main() -> int:
     daily.add_argument("--per-trial-tokens", type=int, default=15000)
     daily.add_argument("--free-tpm-cap", type=int, default=12000)
     daily.add_argument("--output", type=Path, default=None)
-    daily.set_defaults(func=cmd_daily)
+    daily.set_defaults(func=disabled_oversized_probe)
 
     args = parser.parse_args()
     return args.func(args)

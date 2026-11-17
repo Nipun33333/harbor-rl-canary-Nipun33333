@@ -39,7 +39,7 @@ For example, running `python /app/reconcile.py /app/sample_transactions.csv` sho
 
 ## Execution guidance
 
-- You have four responses in total, so plan them: (1) read the program once with `sed -n '1,120p' /app/reconcile.py`; (2) write the corrected program in one command; (3) verify it; (4) use any remaining response to repair a failure.
+- You have five responses in total. Inspect the program, make targeted repairs, test it, and reserve remaining responses to repair any failures.
 - Keep every response small: at most about 450 output tokens. This run allows 1,000 output tokens per minute and reserves your whole completion budget on each request, so a single enormous response is truncated before it finishes. If a write is cut off, use your next response to append the remainder.
 - Keep the payload compact. Every command you issue is re-sent with the next request, so write only what is needed and never repeat source you have already sent.
 - Verify with one command that compiles the program and runs a single concise CSV test covering deduplication, status filtering and timezone comparison.

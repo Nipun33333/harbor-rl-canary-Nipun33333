@@ -50,7 +50,7 @@ For Groq:
 export GROQ_API_KEY="PASTE_YOUR_KEY_HERE"
 ```
 
-The GitHub Actions workflow is configured only for `groq/openai/gpt-oss-20b` using the Groq Free plan. No paid model or paid-provider fallback is configured.
+The GitHub Actions workflow is configured only for `groq/qwen/qwen3.8-27b` using the Groq Free plan. No paid model or paid-provider fallback is configured.
 
 Never paste the key into source code or commit it to GitHub. Do not add a `.env` file to this submission.
 
@@ -67,7 +67,7 @@ This keeps the dense verifier backup as `tests/test_dense.sh` and installs the b
 ```bash
 harbor run -p ./tasks/reconcile-bug \
   -a terminus-2 \
-  --model groq/openai/gpt-oss-20b \
+  --model groq/qwen/qwen3.8-27b \
   -k 3 -n 1
 ```
 
@@ -82,7 +82,7 @@ Keep the binary verifier active for this run as well. The planned ablation is a 
 cp tasks/reconcile-bug/instruction.ablation.md tasks/reconcile-bug/instruction.md
 harbor run -p ./tasks/reconcile-bug \
   -a terminus-2 \
-  --model groq/openai/gpt-oss-20b \
+  --model groq/qwen/qwen3.8-27b \
   -k 3 -n 1
 ```
 
@@ -158,7 +158,7 @@ Follow [`LOOM_WALKTHROUGH.md`](LOOM_WALKTHROUGH.md). The video must be one unedi
 
 Before manually starting the six-trial workflow, create one repository Actions secret in GitHub:
 
-- Add only Groq `GROQ_API_KEY`. The workflow uses `groq/openai/gpt-oss-20b` and checks model availability before any trial starts.
+- Add only Groq `GROQ_API_KEY`. The workflow uses `groq/qwen/qwen3.8-27b` and checks model availability before any trial starts.
 
 Open **Settings → Secrets and variables → Actions → New repository secret**. Never paste the key into chat, source files, or commits. The `Harbor LLM trials (FREE Groq model only)` workflow is manually dispatched after the secret is configured. It runs six `terminus-2` trials: three baseline and three ablation, sequentially. It uploads the real Harbor `jobs/` directory as a workflow artifact, including `result.json` and `trajectory.json`. The workflow can also be rerun from the Actions tab.
 

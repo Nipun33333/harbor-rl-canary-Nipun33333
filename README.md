@@ -20,7 +20,9 @@ The binary calibration verifier is all-or-nothing: a trial receives `1.00` only 
 
 ## 3. Ablation & RL Advantage Table (`terminus-2`, `k=3`)
 
-**Fill this table only from clean, real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed: `nop` scored `0.00` and `oracle` scored `1.00`. Legacy run #4 was a diagnostic pilot: baseline rewards were `0.00`, `0.00`, and `1.00` (mean `0.333`), but all three ended with `AgentTimeoutError` and the ablation group was skipped. Those pilot values are documented below but are not entered as final comparison data. The failures came from Groq Free input-token-per-minute and tokens-per-day limits, not an invalid API key.
+**Fill this table only from clean, real Harbor jobs.** Harbor 0.26.0 Docker smoke tests have passed: `nop` scored `0.00` and `oracle` scored `1.00`.  Legacy run #4 was a diagnostic pilot: baseline rewards were `0.00`, `0.00`, and `1.00` (mean `0.333`), but all three ended with `AgentTimeoutError` and the ablation group was skipped. Those pilot values are documented below but are not entered as final comparison data. The failures came from Groq Free input-token-per-minute and tokens-per-day limits, not an invalid API key.
+
+**Latest diagnostic attempt (GitHub Actions run #18; still not a valid final experiment):** the baseline report recorded `1.00, 1.00, 0.00`, but trial `reconcile-bug__42NsA2t` also ended with a Groq daily-token `RateLimitError` (200,000 limit; 196,020 used; 5,754 requested). The workflow therefore rejected the baseline group and skipped ablation. The two exception-free trials were `reconcile-bug__dwFyLaa` (`1.00`) and `reconcile-bug__pWb5A3f` (`0.00`). Do not use the apparent `[1, 1, 0]` mean as final experiment data. The real logs are available in [GitHub Actions run #18](https://github.com/Nipun33333/harbor-rl-canary-Nipun33333/actions/runs/43958484922); see [the diagnostic note](jobs_summary/diagnostic-run-2026-11-16.md).
 
 | Run | Change tested | Trial 1 (Binary / Dense) | Trial 2 (Binary / Dense) | Trial 3 (Binary / Dense) | Mean Binary | Mean Dense | Binary advantages (T1, T2, T3) | Dense advantages (T1, T2, T3) |
 | :-- | :-- | :-- | :-- | :-- | --: | --: | :-- | :-- |
@@ -36,6 +38,9 @@ For each run and each reward type, calculate:
 A small offline helper is provided at `scripts/calculate_advantages.py`. It calculates means and advantages from six reward values copied from the real `result.json` files; it does not create trial results.
 
 ## 4. Trajectory Forensics (`trajectory.json`)
+
+- **Latest diagnostic Run 1 failure:** In trial `reconcile-bug__pWb5A3f`, the agent ran `python3 -m py_compile /app/reconcile.py` successfully, then ran `python3 /app/reconcile.py /tmp/t.csv`. The program crashed with `ValueError: too many values to unpack (expected 2)`: the implementation stored more than two fields per value in `latest`, but later unpacked each value into only two variables. This is visible in the real `agent/trajectory.json` inside the run #18 artifact.
+- **Ablation status:** The one intended ablation is an explicit CLI invocation/output example in the instructions. It was **not run** in run #18 because baseline validation failed on the TPD exception. There is no Run 2 trajectory or measured ablation effect yet.
 
 - **Legacy run #4 failure:** Qwen3.8-27B split `/app/reconcile.py` into multiple append operations, re-read the full file, and ran extra checks. This grew the conversation until requests exceeded Groq Free ITPM/TPD limits. All three trials ended with `AgentTimeoutError` after 300 seconds; one had a correct implementation and binary reward `1.00` but still timed out. The new baseline and ablation both use the same execution-efficiency guidance so the single ablation example remains the only treatment difference.
 - **Ablation hypothesis:** The added CLI example should reduce invocation/interface mistakes. Compare actual Run 1 and Run 2 trajectories to see whether the agent first discovers the intended one-argument CLI and whether that change affects its later tests. Do not claim an improvement unless the logs show it.

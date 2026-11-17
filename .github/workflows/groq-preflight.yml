@@ -1,0 +1,27 @@
+name: Groq minimal connection check (no benchmark)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: harbor-groq-free-trials
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify model access without inference
+        run: python3 scripts/groq_preflight.py models
+      - name: Make one tiny request, with no retries or oversized probes
+        run: python3 scripts/groq_preflight.py probe --output jobs/connection-check.json
+      - name: Save safe quota report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groq-connection-check
+          path: jobs/connection-check.json
+          if-no-files-found: warn
